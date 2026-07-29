@@ -1,0 +1,1300 @@
+FFIC start time: 1785315772
+A fatal error occurred at pc = 0xaaaad01d63a0
+pid = 101825, tid = 103444
+
+====== GaussDB Version ======
+ (openGauss 5.0.2 build ) compiled at 2026-07-29 16:53:26 commit 0 last mr   on aarch64-unknown-linux-gnu, compiled by g++ (GCC) 7.3.0, 64-bit
+
+====== Fatal signal info ====== 
+si_signo = 11 (SIGSEGV), si_code = 1,si_addr = 0xcca0500000000004
+
+======= Call stack ====== 
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0xa063a0] _Z11list_concatP4ListS0_ + 0x30
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x10b8764] _Z21walk_plan_node_fieldsP4PlanPFbvEPv + 0x34
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x10b8be0] _Z16plan_tree_walkerP4NodePFbvEPv + 0x328
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x18f593c] _Z18GsAmmExecutorStartP9QueryDesci + 0x294
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x13b7de4] _Z22standard_ExecutorStartP9QueryDesci + 0x34
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/postgresql/security_plugin.so + 0x160e4] _ZL28gs_audit_executor_start_hookP9QueryDesci + 0x194
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x124415c] _ZL21explain_ExecutorStartP9QueryDesci + 0x24
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x13b826c] _Z13ExecutorStartP9QueryDesci + 0x54
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x1336ef8] _Z11PortalStartP10PortalDataP17ParamListInfoDataiP12SnapshotData + 0x2d0
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x132da3c] _ZL17exec_simple_queryPKc11MessageTypeP14StringInfoData.constprop.51 + 0x5e4
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x133189c] _Z12PostgresMainiPPcPKcS2_ + 0x2b84
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x12942ec] _ZL10BackendRunP4Port + 0x24c
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x12b8c84] _Z17GaussDbThreadMainIL15knl_thread_role1EEiP14knl_thread_arg + 0x334
+[/home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb + 0x1294380] _ZL18InternalThreadFuncPv + 0x20
+[/lib64/libc.so.6 + 0x7f874]0xffff8742f874
+[/lib64/libc.so.6 + 0xe7c8c]0xffff87497c8c
+
+# Two methods for parsing function names are listed here:
+# 1. Using CLI tool such as "c++filt"
+#       $ c++filt <function-symbol>
+# 2. Or Using online tool
+
+# Two steps for parsing a line number:
+# 1. objcopy --add-gnu-debuglink=<gaussdb-debuginfo-file> <gaussdb-exec-file>
+# 2. addr2line -e <gaussdb-exec-file> <relative-address>
+
+====== Statememt info ======
+[statement] unique SQL key - sql id: 0, cn id: 0, user id: 0
+[statement] debug query id: 281474976710839
+
+====== Registers ======
+X0 = 0xcca0500000000000
+X1 = 0x0000fffe59765d20
+X2 = 0x0000fffe58d30668
+X3 = 0x0000000000000001
+X4 = 0x0000fffe59765d40
+X5 = 0x0000000000000300
+X6 = 0x000000000000001d
+X7 = 0x0000000000000000
+X8 = 0x0000fffea5a96100
+X9 = 0x0000000000000007
+X10 = 0x00000000168456c0
+X11 = 0x0000000016845ac0
+X12 = 0x0000aaaaffef4640
+X13 = 0x0000aaaaffef4e40
+X14 = 0x0000000000000014
+X15 = 0x000000000000003c
+X16 = 0x0000aaaad6de9b80
+X17 = 0x0000ffff873e9c80
+X18 = 0x00000000ffffffff
+X19 = 0xcca0500000000000
+X20 = 0x0000fffe59765d20
+X21 = 0x0000aaaad10c4520
+X22 = 0xcca0500000000000
+X23 = 0x0000fffe584ec430
+X24 = 0x0000000000000000
+X25 = 0x000000000001d5d0
+X26 = 0x0000000000003000
+X27 = 0x0000fffe584caa48
+X28 = 0x0000fffe584d0648
+X29 = 0x0000fffe584ca0c0
+X30 = 0x0000aaaad0888764
+SP = 0x0000fffe584ca0c0
+PC = 0x0000aaaad01d63a0
+
+====== Top of stack ======
+sp = 0x016fffe584ca0c0
+0xfffe584ca0c0: 0x0000fffe584ca0f0 0x0000aaaad0888764
+0xfffe584ca0d0: 0x0000fffe584ca1cb 0x0000fffe58d061f0
+0xfffe584ca0e0: 0x0000aaaad10c4520 0x0000fffe58d061f0
+0xfffe584ca0f0: 0x0000fffe584ca120 0x0000aaaad0888be0
+0xfffe584ca100: 0x0000fffe58d061f0 0x0000fffe584ca1cb
+0xfffe584ca110: 0x0000aaaad10c4520 0x0000fffe584cc480
+0xfffe584ca120: 0x0000fffe584ca160 0x0000aaaad10c593c
+0xfffe584ca130: 0x0000000000000000 0x0000fffe584ca7e4
+0xfffe584ca140: 0x0000000000000000 0x0000fffe584cc480
+0xfffe584ca150: 0x0000fffe584ec430 0x0000fffe584ec410
+0xfffe584ca160: 0x0000fffe584ca510 0x0000aaaad0b87de4
+0xfffe584ca170: 0x0000fffe59765c50 0x0000fffe59765c50
+0xfffe584ca180: 0x0000fffe584cc480 0x0000fffe58d166b0
+0xfffe584ca190: 0x0000fffe584cac20 0x0000fffe58cca050
+0xfffe584ca1a0: 0x0000000000000000 0x0000fffe584ca7e8
+0xfffe584ca1b0: 0x0000fffe58d061f0 0x0000fffe59765c50
+0xfffe584ca1c0: 0x000000000001d5d0 0x0000000000000070
+0xfffe584ca1d0: 0x0000000000000000 0x0000fffe58cca050
+0xfffe584ca1e0: 0x0000fffe58d30738 0x0000fffe58cca050
+0xfffe584ca1f0: 0x0000000000000001 0x0000fffe58d30448
+0xfffe584ca200: 0x000000000001d5d0 0x0000fffe58d04270
+0xfffe584ca210: 0x0000fffe599e58e0 0x0000fffe58cca050
+0xfffe584ca220: 0x0000fffe584ca250 0x0000aaaad08174d8
+0xfffe584ca230: 0x0000000000000001 0x0000aaaad01d5f4c
+0xfffe584ca240: 0x0000fffe58d30448 0x0000fffe00000001
+0xfffe584ca250: 0x0000fffe584ca350 0x0000aaaad08139dc
+0xfffe584ca260: 0x0000fffe584ca2a0 0x0000aaaad05dfc3c
+0xfffe584ca270: 0x0000fffe584ca350 0x0000aaaad0813b1c
+0xfffe584ca280: 0x0000fffe599e5790 0x0000fffe584cc480
+0xfffe584ca290: 0x000000000001d5d0 0x0000fffe58d04270
+0xfffe584ca2a0: 0x0000fffe599e58e0 0x0000fffe599e5f88
+0xfffe584ca2b0: 0x0000000000000000 0x0000000000000000
+
+Instructions: (pc = 0x0000aaaad01d63a0)
+0xaaaad01d6380: f3 03 00 aa f5 13 00 f9
+0xaaaad01d6388: c1 01 00 b4 f4 03 01 aa
+0xaaaad01d6390: 1f 00 01 eb 20 02 00 54
+0xaaaad01d6398: 83 06 40 b9 e0 03 13 aa
+0xaaaad01d63a0: 61 06 40 b9 62 0a 40 f9
+0xaaaad01d63a8: 21 00 03 0b 61 06 00 b9
+0xaaaad01d63b0: 81 06 40 f9 41 04 00 f9
+0xaaaad01d63b8: 81 0a 40 f9 61 0a 00 f9
+
+# You can use disassembly tool to obtain assembly instructions.
+
+====== GUC info ======
+acce_min_datasize_per_thread = 500000KB
+acceleration_with_compute_pool = off
+advance_xlog_file_num = 0
+alarm_component = /opt/snas/bin/snas_cm_cmd
+alarm_report_interval = 10
+allocate_mem_cost = 0
+allow_concurrent_tuple_update = on
+allow_create_sysobject = on
+allow_system_table_mods = off
+analysis_options = result in show_hook
+application_name = gsql
+archive_command = result in show_hook
+archive_dest = 
+archive_interval = 1000ms
+archive_mode = off
+archive_timeout = 0
+array_nulls = on
+asp_flush_mode = table
+asp_flush_rate = 10
+asp_log_directory = /home/sqlrush/gauss-amm-log/asp_data/gauss_amm_lab
+asp_log_filename = asp-%Y-%m-%d_%H%M%S.log
+asp_retention_days = 2
+asp_sample_interval = 1000ms
+asp_sample_num = 100000
+audit_copy_exec = 1
+audit_data_format = binary
+audit_database_process = 1
+audit_directory = pg_audit
+audit_dml_state = 0
+audit_dml_state_select = 0
+audit_enabled = on
+audit_file_remain_threshold = 1048576
+audit_file_remain_time = 90
+audit_function_exec = 0
+audit_grant_revoke = 1
+audit_login_logout = 7
+audit_resource_policy = on
+audit_rotation_interval = 86400000ms
+audit_rotation_size = 10240KB
+audit_set_parameter = 0
+audit_space_limit = 1048576KB
+audit_system_function_exec = 0
+audit_system_object = 67121159
+audit_thread_num = 1
+audit_user_locked = 1
+audit_user_violation = 0
+audit_xid_info = 0
+auth_iteration_count = 10000
+authentication_timeout = 60000ms
+auto_explain_level = log
+autoanalyze = off
+autoanalyze_timeout = 300000ms
+autovacuum = on
+autovacuum_analyze_scale_factor = 0.1
+autovacuum_analyze_threshold = 50
+autovacuum_freeze_max_age = 4000000000
+autovacuum_io_limits = 18446744073709551615
+autovacuum_max_workers = 3
+autovacuum_mode = mix
+autovacuum_naptime = 600000ms
+autovacuum_vacuum_cost_delay = 20ms
+autovacuum_vacuum_cost_limit = 18446744073709551615
+autovacuum_vacuum_scale_factor = 0.2
+autovacuum_vacuum_threshold = 50
+available_zone = 
+b_compatibility_user_host_auth = off
+b_format_behavior_compat_options = 
+backend_flush_after = 0
+backslash_quote = safe_encoding
+backtrace_min_messages = panic
+backwrite_quantity = 8192KB
+basebackup_timeout = 600000ms
+bbox_blanklist_items = result in show_hook
+bbox_dump_count = 8
+bbox_dump_path = result in show_hook
+behavior_compat_options = 
+bgwriter_delay = 2000ms
+bgwriter_flush_after = 512KB
+bgwriter_lru_maxpages = 100
+bgwriter_lru_multiplier = 2
+block_encryption_mode = aes-128-cbc
+block_size = 8192
+bulk_read_ring_size = 16384KB
+bulk_write_ring_size = 2097152KB
+bypass_dram = 0.01
+bypass_nvm = 0.5
+bytea_output = hex
+cache_connection = on
+candidate_buf_percent_target = 0.3
+catchup2normal_wait_time = 18446744073709551615ms
+cgroup_name = result in show_hook
+character_set_connection = result in show_hook
+check_function_bodies = on
+check_implicit_conversions = off
+checkpoint_completion_target = 0.5
+checkpoint_flush_after = 256KB
+checkpoint_segments = 64
+checkpoint_timeout = 900000ms
+checkpoint_wait_timeout = 60000ms
+checkpoint_warning = 300000ms
+client_encoding = SQL_ASCII
+client_min_messages = notice
+cluster_run_mode = cluster_primary
+cn_send_buffer_size = 8KB
+codegen_cost_threshold = 10000
+codegen_strategy = partial
+collation_connection = result in show_hook
+comm_proxy_attr = none
+commit_delay = 0
+commit_siblings = 5
+config_file = /home/sqlrush/gauss-amm-data/postgresql.conf
+connection_alarm_rate = 0.9
+connection_info = {"driver_name":"libpq","driver_version":"(openGauss 5.0.2 build ) compiled at 2026-07-29 16:53:26 commit 0 last mr  "}
+constraint_exclusion = partition
+convert_string_to_digit = on
+cost_param = 0
+cost_weight_index = 1
+cpu_collect_timer = 30
+cpu_index_tuple_cost = 0.005
+cpu_operator_cost = 0.0025
+cpu_tuple_cost = 0.01
+cross_cluster_replconninfo1 = 
+cross_cluster_replconninfo2 = 
+cross_cluster_replconninfo3 = 
+cross_cluster_replconninfo4 = 
+cross_cluster_replconninfo5 = 
+cross_cluster_replconninfo6 = 
+cross_cluster_replconninfo7 = 
+cross_cluster_replconninfo8 = 
+cstore_backwrite_max_threshold = 2097152KB
+cstore_backwrite_quantity = 8192KB
+cstore_buffers = 524288KB
+cstore_insert_mode = auto
+cstore_prefetch_quantity = 32768KB
+current_logic_cluster = result in show_hook
+current_schema = "$user",public
+cursor_tuple_fraction = 0.1
+data_directory = /home/sqlrush/gauss-amm-data
+data_replicate_buffer_size = 16384KB
+data_sync_retry = off
+datanode_heartbeat_interval = 1000ms
+DateStyle = ISO, MDY
+db4ai_snapshot_mode = MSS
+db4ai_snapshot_version_delimiter = @
+db4ai_snapshot_version_separator = .
+dcf_compress_algorithm = 0
+dcf_compress_level = 1
+dcf_config = 
+dcf_connect_timeout = 60000
+dcf_data_path = 
+dcf_election_switch_threshold = 0
+dcf_election_timeout = 3
+dcf_enable_auto_election_priority = 1
+dcf_flow_control_cpu_threshold = 100
+dcf_flow_control_disk_rawait_threshold = 100000
+dcf_flow_control_net_queue_message_num_threshold = 1024
+dcf_log_backup_file_count = 10
+dcf_log_file_permission = 600
+dcf_log_level = RUN_ERR|RUN_WAR|DEBUG_ERR|OPER|RUN_INF|PROFILE
+dcf_log_path = 
+dcf_log_path_permission = 700
+dcf_majority_groups = 
+dcf_max_log_file_size = 10
+dcf_max_workers = 10
+dcf_mec_agent_thread_num = 10
+dcf_mec_batch_size = 0
+dcf_mec_channel_num = 1
+dcf_mec_fragment_size = 64
+dcf_mec_pool_max_size = 200
+dcf_mec_reactor_thread_num = 1
+dcf_mem_pool_init_size = 32
+dcf_mem_pool_max_size = 2048
+dcf_node_id = 1
+dcf_rep_append_thread_num = 2
+dcf_run_mode = 0
+dcf_socket_timeout = 5000
+dcf_ssl = on
+dcf_stg_pool_init_size = 32
+dcf_stg_pool_max_size = 2048
+dcf_truncate_threshold = 100000
+deadlock_timeout = 1000ms
+debug_assertions = off
+debug_pretty_print = on
+debug_print_parse = off
+debug_print_plan = off
+debug_print_rewritten = off
+default_limit_rows = -10
+default_statistics_target = 100
+default_tablespace = 
+default_text_search_config = pg_catalog.english
+default_transaction_deferrable = off
+default_transaction_isolation = read committed
+default_transaction_read_only = off
+default_with_oids = off
+defer_csn_cleanup_time = 5000ms
+delimiter_name = ;
+dfs_partition_directory_length = 512
+dirty_page_percent_max = 0.9
+disable_memory_protect = off
+dolphin_hot_standby = on
+dolphin_server_port = 3308
+dw_file_num = 1
+dw_file_size = 256
+dynamic_library_path = $libdir
+effective_cache_size = 131072KB
+effective_io_concurrency = 1
+elastic_search_ip_addr = https://127.0.0.1
+enable_absolute_tablespace = on
+enable_access_server_directory = off
+enable_adio_debug = off
+enable_adio_function = off
+enable_ai_stats = on
+enable_alarm = on
+enable_analyze_check = off
+enable_asp = on
+enable_auto_clean_unique_sql = off
+enable_auto_explain = off
+enable_availablezone = off
+enable_bbox_dump = on
+enable_beta_features = off
+enable_beta_opfusion = off
+enable_bitmapscan = on
+enable_bloom_filter = on
+enable_broadcast = on
+enable_cachedplan_mgr = on
+enable_cbm_tracking = off
+enable_change_hjcost = off
+enable_codegen = on
+enable_codegen_print = off
+enable_compress_hll = off
+enable_compress_spill = on
+enable_consider_usecount = off
+enable_constraint_optimization = on
+enable_copy_server_files = off
+enable_csqual_pushdown = on
+enable_custom_parser = off
+enable_data_replicate = off
+enable_dcf = off
+enable_debug_vacuum = off
+enable_default_cfunc_libpath = on
+enable_default_ustore_table = off
+enable_defer_calculate_snapshot = on
+enable_delta_store = off
+enable_dolphin_proto = off
+enable_double_write = on
+enable_early_free = on
+enable_expr_fusion = off
+enable_extrapolation_stats = off
+enable_fast_allocate = off
+enable_fast_numeric = on
+enable_ffic_log = on
+enable_force_vector_engine = off
+enable_functional_dependency = off
+enable_global_plancache = off
+enable_global_stats = on
+enable_global_syscache = on
+enable_gtt_concurrent_truncate = on
+enable_hadoop_env = off
+enable_hashagg = on
+enable_hashjoin = on
+enable_hdfs_predicate_pushdown = on
+enable_huge_pages = off
+enable_hypo_index = off
+enable_incremental_catchup = on
+enable_incremental_checkpoint = on
+enable_index_nestloop = on
+enable_indexonlyscan = on
+enable_indexscan = on
+enable_indexscan_optimization = off
+enable_inner_unique_opt = off
+enable_instance_metric_persistent = on
+enable_instr_cpu_timer = on
+enable_instr_rt_percentile = on
+enable_instr_track_wait = on
+enable_kill_query = off
+enable_logical_io_statistics = on
+enable_material = on
+enable_memory_context_control = off
+enable_memory_limit = result in show_hook
+enable_mergejoin = on
+enable_mix_replication = off
+enable_nestloop = on
+enable_nonsysadmin_execute_direct = off
+enable_nvm = off
+enable_online_ddl_waitlock = off
+enable_opfusion = on
+enable_orc_cache = on
+enable_page_lsn_check = on
+enable_partition_opfusion = off
+enable_partitionwise = off
+enable_pbe_optimization = on
+enable_prevent_job_task_startup = off
+enable_recyclebin = off
+enable_remote_excute = off
+enable_resource_record = off
+enable_resource_track = off
+enable_save_confirmed_lsn = off
+enable_save_datachanged_timestamp = on
+enable_security_policy = off
+enable_segment = off
+enable_seqscan = on
+enable_seqscan_fusion = off
+enable_set_variable_b_format = off
+enable_show_any_tuples = off
+enable_slot_log = off
+enable_slow_query_log = on
+enable_sonic_hashagg = on
+enable_sonic_hashjoin = on
+enable_sonic_optspill = on
+enable_sort = on
+enable_startwith_debug = off
+enable_stmt_track = on
+enable_stream_replication = on
+enable_tde = off
+enable_thread_pool = off
+enable_tidscan = on
+enable_upgrade_merge_lock_mode = off
+enable_user_metric_persistent = on
+enable_ustore = on
+enable_valuepartition_pruning = on
+enable_vector_engine = on
+enable_wal_shipping_compression = off
+enable_wdr_snapshot = off
+enable_xlog_prune = on
+enableSeparationOfDuty = off
+enforce_a_behavior = on
+escape_string_warning = on
+event_source = PostgreSQL
+exit_on_error = off
+explain_dna_file = 
+explain_perf_mode = normal
+external_pid_file = 
+extra_float_digits = 0
+failed_login_attempts = 10
+fast_extend_file_size = 8192KB
+fault_mon_timeout = 300000ms
+FencedUDFMemoryLimit = 0
+force_bitmapand = off
+force_promote = 0
+from_collapse_limit = 8
+fsync = on
+full_audit_users = 
+full_page_writes = on
+geqo = on
+geqo_effort = 5
+geqo_generations = 0
+geqo_pool_size = 0
+geqo_seed = 0
+geqo_selection_bias = 2
+geqo_threshold = 12
+gin_fuzzy_search_limit = 0
+gin_pending_list_limit = 4096KB
+global_syscache_threshold = 163840KB
+gpc_clean_timeout = 1800000ms
+group_concat_max_len = 1024
+gs_amm_admission_failure_policy = fallback
+gs_amm_allocator_only_grant_mb = 64
+gs_amm_allocator_only_mode = off
+gs_amm_ap_min_grant_mb = 4
+gs_amm_ap_queue_limit = 16
+gs_amm_ap_queue_timeout_ms = 5000ms
+gs_amm_controller_horizon = 3
+gs_amm_deadband_mb = 32
+gs_amm_dtree_calibration_enabled = off
+gs_amm_dtree_record_only = on
+gs_amm_dynamic_target_mb = 256
+gs_amm_enabled = on
+gs_amm_fallback_work_mem_kb = 65536KB
+gs_amm_feedback_bootstrap_grant_mb = 64
+gs_amm_feedback_initial_ap_slots = 1
+gs_amm_feedback_max_ap_slots = 2
+gs_amm_feedback_max_grant_mb = 128
+gs_amm_feedback_only_mode = on
+gs_amm_feedback_spill_threshold_mb = 32
+gs_amm_feedback_stable_windows = 2
+gs_amm_granule_size_mb = 64
+gs_amm_io_pressure_guard = 80
+gs_amm_legacy_control_enabled = on
+gs_amm_native_ap_cost_threshold = 0
+gs_amm_native_auto_mode = on
+gs_amm_resize_batch_mb = 64
+gs_amm_resize_cooldown_ms = 0
+gs_amm_resize_observe_window_ms = 0
+gs_amm_resize_rate_limit_mb = 64
+gs_amm_shared_buffers_min_mb = 256
+gs_amm_tp_jitter_limit = 0.03
+gs_amm_tp_pressure_guard = 80
+gs_amm_tp_recovery_cooldown_ms = 0
+gs_clean_timeout = 60000ms
+ha_module_debug = off
+hadr_max_size_for_xlog_receiver = 268435456KB
+hadr_recovery_point_target = 0
+hadr_recovery_time_target = 0
+hadr_super_user_record_path = 
+handle_toast_in_autovac = off
+hashagg_table_size = 0
+hba_file = /home/sqlrush/gauss-amm-data/pg_hba.conf
+hll_default_expthresh = -1
+hll_default_log2explicit = 10
+hll_default_log2m = 14
+hll_default_log2sparse = 12
+hll_default_regwidth = 5
+hll_default_sparseon = 1
+hll_duplicate_check = 0
+hll_max_sparse = 18446744073709551615
+hot_standby = on
+hot_standby_feedback = off
+huge_page_size = 0
+ident_file = /home/sqlrush/gauss-amm-data/pg_ident.conf
+idle_in_transaction_session_timeout = 0
+ignore_checksum_failure = off
+ignore_feedback_xmin_window = 0
+ignore_standby_lsn_window = 0
+ignore_system_indexes = off
+incremental_checkpoint_timeout = 60000ms
+instance_metric_retention_time = 7
+instr_rt_percentile_interval = 10000ms
+instr_unique_sql_count = 100
+instr_unique_sql_track_type = top
+integer_datetimes = on
+IntervalStyle = postgres
+io_control_unit = 6000
+io_limits = 0
+io_priority = None
+job_queue_processes = 10
+join_collapse_limit = 8
+keep_sync_window = 0
+krb_caseins_users = off
+krb_server_keyfile = 
+krb_srvname = postgres
+lastval_supported = off
+lc_collate = C
+lc_ctype = C
+lc_messages = C
+lc_monetary = C
+lc_numeric = C
+lc_time = C
+light_comm = off
+listen_addresses = 127.0.0.1
+lo_compat_privileges = off
+local_bind_address = 0.0.0.0
+local_preload_libraries = 
+local_syscache_threshold = 262144KB
+lockwait_timeout = 1200000ms
+log_autovacuum_min_duration = 18446744073709551615ms
+log_checkpoints = off
+log_connections = off
+log_destination = stderr
+log_directory = pg_log
+log_disconnections = off
+log_duration = off
+log_error_verbosity = default
+log_executor_stats = off
+log_file_mode = result in show_hook
+log_filename = postgresql-%Y-%m-%d_%H%M%S.log
+log_hostname = off
+log_line_prefix = %m %u %d %h %p %S 
+log_lock_waits = off
+log_min_duration_statement = 1800000ms
+log_min_error_statement = error
+log_min_messages = warning
+log_pagewriter = off
+log_parser_stats = off
+log_planner_stats = off
+log_rotation_age = 86400000ms
+log_rotation_size = 20480KB
+log_statement = none
+log_statement_stats = off
+log_temp_files = 18446744073709551615KB
+log_timezone = result in show_hook
+log_truncate_on_rotation = off
+logging_collector = on
+logging_module = result in show_hook
+logical_decode_options_default = 
+logical_sender_timeout = 30000ms
+maintenance_work_mem = 16384KB
+max_active_global_temporary_table = 1000
+max_cached_tuplebufs = 8192
+max_changes_in_memory = 4096
+max_compile_functions = 1000
+max_concurrent_autonomous_transactions = 10
+max_connections = 200
+max_error_count = 64
+max_files_per_process = 1000
+max_function_args = 8192
+max_identifier_length = 63
+max_index_keys = 32
+max_inner_tool_connections = 50
+max_io_capacity = 512000KB
+max_keep_log_seg = 0
+max_loaded_cudesc = 1024
+max_locks_per_transaction = 256
+max_logical_replication_workers = 4
+max_pred_locks_per_transaction = 64
+max_prepared_transactions = 200
+max_process_memory = 12582912KB
+max_query_retry_times = 0
+max_recursive_times = 200
+max_redo_log_size = 1048576KB
+max_replication_slots = 8
+max_resource_package = 0
+max_size_for_xlog_prune = 2147483647KB
+max_stack_depth = 2048KB
+max_standby_archive_delay = 3000ms
+max_standby_streaming_delay = 3000ms
+max_sync_workers_per_subscription = 2
+max_undo_workers = 5
+max_user_defined_exception = 1000
+max_wal_senders = 4
+memory_detail_tracking = result in show_hook
+memory_fault_percent = 0
+memory_trace_level = level1
+memory_tracking_mode = none
+memorypool_enable = off
+memorypool_size = 524288KB
+modify_initial_password = off
+most_available_sync = off
+multi_stats_type = bayesnet
+ngram_gram_size = 2
+ngram_grapsymbol_ignore = off
+ngram_punctuation_ignore = on
+nls_timestamp_format = DD-Mon-YYYY HH:MI:SS.FF AM
+no_audit_client = 
+num_internal_lock_partitions = CLOG_PART=256,CSNLOG_PART=512,LOG2_LOCKTABLE_PART=4,TWOPHASE_PART=1,FASTPATH_PART=20
+numa_distribute_mode = none
+nvm_buffers = 0
+nvm_file_path = 
+omit_encoding_error = off
+operation_mode = off
+opfusion_debug_mode = off
+pagewriter_sleep = 2000ms
+pagewriter_thread_num = 4
+partition_iterator_elimination = off
+partition_lock_upgrade_timeout = 1800
+partition_max_cache_size = 2097152KB
+partition_mem_batch = 256
+partition_page_estimation = off
+password_effect_time = 90
+password_encryption_type = 2
+password_lock_time = 1
+password_max_length = 32
+password_min_digital = 0
+password_min_length = 8
+password_min_lowercase = 0
+password_min_special = 0
+password_min_uppercase = 0
+password_notify_time = 7
+password_policy = 1
+password_reuse_max = 0
+password_reuse_time = 60
+pca_shared_buffers = 64KB
+percentile = 80,95
+perf_directory = /home/sqlrush/gauss-amm-log/pg_perf/gauss_amm_lab
+pgxc_node_name = gauss_amm_lab
+plan_cache_mode = auto
+plan_mode_seed = 0
+pldebugger_timeout = 900000ms
+pljava_vmoptions = 
+plog_merge_age = 0
+plsql_compile_check_options = 
+plsql_show_all_error = off
+port = 15432
+post_auth_delay = 0
+pre_auth_delay = 0
+prefetch_quantity = 32768KB
+primary_slotname = 
+psort_work_mem = 524288KB
+qrw_inlist2join_optmode = cost_base
+query_band = 
+query_dop = 1
+query_log_directory = /home/sqlrush/gauss-amm-log/sql_monitor/gauss_amm_lab
+query_log_file = slow_query_log-%Y-%m-%d_%H%M%S.log
+query_max_mem = 0
+query_mem = 0
+quote_all_identifiers = off
+raise_errors_if_no_files = off
+random_page_cost = 4
+recovery_max_workers = 1
+recovery_min_apply_delay = 0
+recovery_parallelism = 1
+recovery_parse_workers = 1
+recovery_redo_workers = 1
+recovery_time_target = 0
+recyclebin_retention_time = 900000ms
+redo_bind_cpu_attr = nobind
+remote_read_mode = authentication
+remotetype = application
+repl_auth_mode = default
+repl_uuid = 
+replconninfo1 = 
+replconninfo2 = 
+replconninfo3 = 
+replconninfo4 = 
+replconninfo5 = 
+replconninfo6 = 
+replconninfo7 = 
+replconninfo8 = 
+replication_type = 1
+RepOriginId = 0
+require_ssl = off
+reserve_space_for_nullable_atts = on
+resilience_memory_reject_percent = 0,0
+resilience_threadpool_reject_cond = 0,0
+resource_track_cost = 100000
+resource_track_duration = 60000ms
+resource_track_level = query
+resource_track_log = summary
+restart_after_crash = on
+retry_ecode_list = YY001 YY002 YY003 YY004 YY005 YY006 YY007 YY008 YY009 YY010 YY011 YY012 YY013 YY014 YY015 53200 08006 08000 57P01 XX003 XX009 YY016
+rewrite_rule = magicset 
+safe_data_path = 
+schedule_splits_threshold = 60000
+search_path = "$user",public
+segment_buffers = 8192KB
+segment_size = 1048576KB
+seq_page_cost = 1
+server_encoding = SQL_ASCII
+server_version = 9.2.4
+server_version_num = 90204
+session_history_memory = 10240KB
+session_replication_role = origin
+session_respool = result in show_hook
+session_statistics_memory = 5120KB
+session_timeout = 600000ms
+shared_buffers = 1048576KB
+shared_preload_libraries = security_plugin
+show_acce_estimate_detail = off
+show_fdw_remote_plan = off
+skew_option = normal
+sql_beta_feature = none
+sql_compatibility = A
+sql_ignore_strategy = ignore_null
+sql_inheritance = on
+sql_note = on
+sql_use_spacelimit = 18446744073709551615KB
+ss_dss_conn_path = UDS:/tmp/.dss_unix_d_socket
+ss_dss_vg_name = 
+ss_enable_aio = on
+ss_enable_catalog_centralized = on
+ss_enable_dms = off
+ss_enable_dss = off
+ss_enable_ondemand_recovery = off
+ss_enable_scrlock = off
+ss_enable_scrlock_sleep_mode = on
+ss_enable_ssl = on
+ss_instance_id = 0
+ss_interconnect_channel_count = 16
+ss_interconnect_type = TCP
+ss_interconnect_url = 0:127.0.0.1:1611
+ss_log_backup_file_count = 10
+ss_log_level = 7
+ss_log_max_file_size = 10240KB
+ss_ock_log_path = 
+ss_ondemand_recovery_mem_size = 4194304KB
+ss_parallel_thread_count = 16
+ss_rdma_work_config = 
+ss_recv_msg_pool_size = 16384KB
+ss_scrlock_server_bind_core = 
+ss_scrlock_server_port = 8000
+ss_scrlock_worker_bind_core = 
+ss_scrlock_worker_count = 2
+ss_work_thread_count = 32
+ssl = off
+ssl_ca_file = 
+ssl_cert_file = server.crt
+ssl_cert_notify_time = 90
+ssl_ciphers = ALL
+ssl_crl_file = 
+ssl_key_file = server.key
+ssl_renegotiation_limit = 0
+standard_conforming_strings = on
+standby_shared_buffers_fraction = 0.3
+statement_timeout = 0
+stats_temp_directory = pg_stat_tmp
+stream_cluster_run_mode = cluster_primary
+string_hash_compatible = off
+subscription_conflict_resolution = error
+support_batch_bind = on
+support_extended_features = off
+sync_config_strategy = all_node
+synchronize_seqscans = on
+synchronous_commit = on
+synchronous_standby_names = *
+sysadmin_reserved_connections = 3
+syslog_facility = local0
+syslog_ident = postgres
+table_skewness_warning_rows = 100000
+table_skewness_warning_threshold = 1
+tcp_keepalives_count = result in show_hook
+tcp_keepalives_idle = result in show_hook
+tcp_keepalives_interval = result in show_hook
+tcp_user_timeout = result in show_hook
+td_compatible_truncation = off
+tde_cmk_id = 
+temp_buffers = 1024KB
+temp_file_limit = 18446744073709551615KB
+temp_tablespaces = 
+thread_pool_attr = 16, 2, (nobind)
+thread_pool_stream_attr = 16, 0.2, 2, (nobind)
+time_to_target_rpo = 0
+TimeZone = result in show_hook
+timezone_abbreviations = Default
+topsql_retention_time = 0
+trace_notify = off
+trace_recovery_messages = log
+trace_sort = off
+track_activities = on
+track_activity_query_size = 1024
+track_counts = on
+track_functions = none
+track_io_timing = off
+track_sql_count = on
+track_stmt_details_size = 4096
+track_stmt_parameter = off
+track_stmt_retention_time = 3600,604800
+track_stmt_session_slot = 1000
+track_stmt_standby_chain_size = 32, 1024, 16, 512
+track_stmt_stat_level = OFF,L0
+track_thread_wait_status_interval = 1800000ms
+transaction_deferrable = off
+transaction_isolation = result in show_hook
+transaction_pending_time = 0
+transaction_read_only = off
+transform_null_equals = off
+transparent_encrypt_kms_region = 
+transparent_encrypt_kms_url = 
+transparent_encrypted_string = 
+try_vector_engine_strategy = off
+udf_memory_limit = 204800KB
+UDFWorkerMemHardLimit = 1048576KB
+uncontrolled_memory_context = result in show_hook
+undo_limit_size_per_transaction = 33554432KB
+undo_retention_time = 0
+undo_space_limit_size = 268435456KB
+undo_zone_count = 0
+unique_sql_retention_time = 1800000ms
+unix_socket_directory = 
+unix_socket_group = 
+unix_socket_permissions = result in show_hook
+update_lockwait_timeout = 120000ms
+update_process_title = off
+upgrade_mode = 0
+uppercase_attribute_name = off
+use_elastic_search = off
+use_workload_manager = on
+user_metric_retention_time = 7
+ustore_attr = 
+vacuum_cost_delay = 0
+vacuum_cost_limit = 200
+vacuum_cost_page_dirty = 20
+vacuum_cost_page_hit = 1
+vacuum_cost_page_miss = 10
+vacuum_defer_cleanup_age = 0
+vacuum_freeze_min_age = 2000000000
+vacuum_freeze_table_age = 4000000000
+vacuum_gtt_defer_check_age = 10000
+var_eq_const_selectivity = off
+version_retention_age = 0
+wait_dummy_time = 300
+wal_block_size = 8192
+wal_buffers = 16384KB
+wal_file_init_num = 10
+wal_flush_delay = 1
+wal_flush_timeout = 2
+wal_keep_segments = 16
+wal_level = hot_standby
+wal_log_hints = on
+wal_receiver_buffer_size = 65536KB
+wal_receiver_connect_retries = 1
+wal_receiver_connect_timeout = 2000ms
+wal_receiver_status_interval = 5000ms
+wal_receiver_timeout = 6000ms
+wal_segment_size = 16384KB
+wal_sender_timeout = 6000ms
+wal_sync_method = fdatasync
+wal_writer_delay = 200ms
+walsender_max_send_size = 8192KB
+walwriter_cpu_bind = 18446744073709551615
+walwriter_sleep_threshold = 500
+wdr_snapshot_interval = 3600000ms
+wdr_snapshot_query_timeout = 100000ms
+wdr_snapshot_retention_days = 8
+work_mem = 65536KB
+xc_maintenance_mode = off
+xlog_file_path = 
+xlog_file_size = 549755813888
+xlog_lock_file_path = 
+xloginsert_locks = 8
+xmlbinary = base64
+xmloption = content
+zero_damaged_pages = off
+
+====== /proc/self/maps ======
+aaaacf7d0000-aaaad6c4a000 r-xp 00000000 00:26 73188                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb
+aaaad6c57000-aaaad6df0000 r--p 07487000 00:26 73188                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb
+aaaad6df0000-aaaad7250000 rw-p 07620000 00:26 73188                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/bin/gaussdb
+aaaad7250000-aaaaffef6000 rw-p 00000000 00:00 0 
+fffe51300000-fffe51c00000 rw-p 00000000 00:00 0 
+fffe51d00000-fffe52a00000 rw-p 00000000 00:00 0 
+fffe52bf0000-fffe52c00000 ---p 00000000 00:00 0 
+fffe52c00000-fffe53c00000 rw-p 00000000 00:00 0 
+fffe53c00000-fffe54400000 rw-p 00000000 00:00 0 
+fffe54500000-fffe55c00000 rw-p 00000000 00:00 0 
+fffe55d00000-fffe56600000 rw-p 00000000 00:00 0 
+fffe56700000-fffe57400000 rw-p 00000000 00:00 0 
+fffe574f0000-fffe57500000 ---p 00000000 00:00 0 
+fffe57500000-fffe58500000 rw-p 00000000 00:00 0 
+fffe58500000-fffe58e00000 rw-p 00000000 00:00 0 
+fffe58f00000-fffe59c00000 rw-p 00000000 00:00 0 
+fffe5ae00000-fffe5c400000 rw-p 00000000 00:00 0 
+fffe5c5f0000-fffe5caf0000 rw-p 00000000 00:00 0 
+fffe5caf0000-fffe5cb00000 ---p 00000000 00:00 0 
+fffe5cb00000-fffe5db00000 rw-p 00000000 00:00 0 
+fffe5db00000-fffe5e400000 rw-p 00000000 00:00 0 
+fffe5e480000-fffe5ec00000 rw-p 00000000 00:00 0 
+fffe5ed00000-fffe60400000 rw-p 00000000 00:00 0 
+fffe60480000-fffe61400000 rw-p 00000000 00:00 0 
+fffe61580000-fffe62200000 rw-p 00000000 00:00 0 
+fffe62360000-fffe62660000 rw-p 00000000 00:00 0 
+fffe62660000-fffe62670000 ---p 00000000 00:00 0 
+fffe62670000-fffe63670000 rw-p 00000000 00:00 0 
+fffe63670000-fffe63df0000 rw-p 00000000 00:00 0 
+fffe63df0000-fffe63e00000 ---p 00000000 00:00 0 
+fffe63e00000-fffe64e00000 rw-p 00000000 00:00 0 
+fffe64e00000-fffe65800000 rw-p 00000000 00:00 0 
+fffe659f0000-fffe65a00000 ---p 00000000 00:00 0 
+fffe65a00000-fffe66a00000 rw-p 00000000 00:00 0 
+fffe66a00000-fffe66c00000 rw-p 00000000 00:00 0 
+fffe66de0000-fffe66df0000 ---p 00000000 00:00 0 
+fffe66df0000-fffe67df0000 rw-p 00000000 00:00 0 
+fffe67df0000-fffe67e00000 ---p 00000000 00:00 0 
+fffe67e00000-fffe68e00000 rw-p 00000000 00:00 0 
+fffe68e00000-fffe69c00000 rw-p 00000000 00:00 0 
+fffe69d80000-fffe6b400000 rw-p 00000000 00:00 0 
+fffe6b580000-fffe6c400000 rw-p 00000000 00:00 0 
+fffe6c580000-fffe6d000000 rw-p 00000000 00:00 0 
+fffe6d080000-fffe6da00000 rw-p 00000000 00:00 0 
+fffe6db80000-fffe6e000000 rw-p 00000000 00:00 0 
+fffe6e080000-fffe6f200000 rw-p 00000000 00:00 0 
+fffe6f300000-fffe71200000 rw-p 00000000 00:00 0 
+fffe71280000-fffe71a00000 rw-p 00000000 00:00 0 
+fffe71a80000-fffe72400000 rw-p 00000000 00:00 0 
+fffe72480000-fffe73c00000 rw-p 00000000 00:00 0 
+fffe73c80000-fffe74c00000 rw-p 00000000 00:00 0 
+fffe74d80000-fffe75c00000 rw-p 00000000 00:00 0 
+fffe75c80000-fffe76a00000 rw-p 00000000 00:00 0 
+fffe76a80000-fffe77a00000 rw-p 00000000 00:00 0 
+fffe77b00000-fffe79000000 rw-p 00000000 00:00 0 
+fffe79080000-fffe79e00000 rw-p 00000000 00:00 0 
+fffe79f00000-fffe7a600000 rw-p 00000000 00:00 0 
+fffe7a680000-fffe7b000000 rw-p 00000000 00:00 0 
+fffe7b180000-fffe7be00000 rw-p 00000000 00:00 0 
+fffe7bf00000-fffe7d000000 rw-p 00000000 00:00 0 
+fffe7d100000-fffe7de00000 rw-p 00000000 00:00 0 
+fffe7df00000-fffe7f000000 rw-p 00000000 00:00 0 
+fffe7f100000-fffe80200000 rw-p 00000000 00:00 0 
+fffe80300000-fffe81200000 rw-p 00000000 00:00 0 
+fffe81350000-fffe81360000 ---p 00000000 00:00 0 
+fffe81360000-fffe82360000 rw-p 00000000 00:00 0 
+fffe82360000-fffe82370000 ---p 00000000 00:00 0 
+fffe82370000-fffe83370000 rw-p 00000000 00:00 0 
+fffe83370000-fffe83380000 ---p 00000000 00:00 0 
+fffe83380000-fffe84380000 rw-p 00000000 00:00 0 
+fffe84380000-fffe84390000 ---p 00000000 00:00 0 
+fffe84390000-fffe85390000 rw-p 00000000 00:00 0 
+fffe85390000-fffe853a0000 ---p 00000000 00:00 0 
+fffe853a0000-fffe863a0000 rw-p 00000000 00:00 0 
+fffe863a0000-fffe863b0000 ---p 00000000 00:00 0 
+fffe863b0000-fffe873b0000 rw-p 00000000 00:00 0 
+fffe873b0000-fffe873c0000 ---p 00000000 00:00 0 
+fffe873c0000-fffe883c0000 rw-p 00000000 00:00 0 
+fffe883c0000-fffe883d0000 ---p 00000000 00:00 0 
+fffe883d0000-fffe893d0000 rw-p 00000000 00:00 0 
+fffe893d0000-fffe893e0000 ---p 00000000 00:00 0 
+fffe893e0000-fffe8a3e0000 rw-p 00000000 00:00 0 
+fffe8a3e0000-fffe8a3f0000 ---p 00000000 00:00 0 
+fffe8a3f0000-fffe8b3f0000 rw-p 00000000 00:00 0 
+fffe8b3f0000-fffe8b400000 ---p 00000000 00:00 0 
+fffe8b400000-fffe8c400000 rw-p 00000000 00:00 0 
+fffe8c400000-fffe8c800000 rw-p 00000000 00:00 0 
+fffe8c920000-fffe8c930000 ---p 00000000 00:00 0 
+fffe8c930000-fffe8d930000 rw-p 00000000 00:00 0 
+fffe8d930000-fffe8d940000 ---p 00000000 00:00 0 
+fffe8d940000-fffe8e940000 rw-p 00000000 00:00 0 
+fffe8e940000-fffe8e950000 ---p 00000000 00:00 0 
+fffe8e950000-fffe8f950000 rw-p 00000000 00:00 0 
+fffe8f950000-fffe8f960000 ---p 00000000 00:00 0 
+fffe8f960000-fffe90960000 rw-p 00000000 00:00 0 
+fffe90960000-fffe90970000 ---p 00000000 00:00 0 
+fffe90970000-fffe91970000 rw-p 00000000 00:00 0 
+fffe91970000-fffe91980000 ---p 00000000 00:00 0 
+fffe91980000-fffe92980000 rw-p 00000000 00:00 0 
+fffe92980000-fffe93200000 rw-p 00000000 00:00 0 
+fffe93370000-fffe935f0000 rw-p 00000000 00:00 0 
+fffe935f0000-fffe93600000 ---p 00000000 00:00 0 
+fffe93600000-fffe94600000 rw-p 00000000 00:00 0 
+fffe94600000-fffe94a00000 rw-p 00000000 00:00 0 
+fffe94be0000-fffe94bf0000 ---p 00000000 00:00 0 
+fffe94bf0000-fffe95bf0000 rw-p 00000000 00:00 0 
+fffe95bf0000-fffe95c00000 ---p 00000000 00:00 0 
+fffe95c00000-fffe96c00000 rw-p 00000000 00:00 0 
+fffe96c00000-fffe98000000 rw-p 00000000 00:00 0 
+fffe98080000-fffe98800000 rw-p 00000000 00:00 0 
+fffe98880000-fffe99200000 rw-p 00000000 00:00 0 
+fffe99350000-fffe99360000 ---p 00000000 00:00 0 
+fffe99360000-fffe9a360000 rw-p 00000000 00:00 0 
+fffe9a360000-fffe9b0e0000 rw-p 00000000 00:00 0 
+fffe9b0e0000-fffe9b0f0000 ---p 00000000 00:00 0 
+fffe9b0f0000-fffe9b8f0000 rw-p 00000000 00:00 0 
+fffe9b8f0000-fffe9c170000 rw-p 00000000 00:00 0 
+fffe9c170000-fffe9c180000 ---p 00000000 00:00 0 
+fffe9c180000-fffe9c980000 rw-p 00000000 00:00 0 
+fffe9c980000-fffe9d000000 rw-p 00000000 00:00 0 
+fffe9d180000-fffe9d800000 rw-p 00000000 00:00 0 
+fffe9d9e0000-fffe9d9f0000 ---p 00000000 00:00 0 
+fffe9d9f0000-fffe9e1f0000 rw-p 00000000 00:00 0 
+fffe9e1f0000-fffe9e200000 ---p 00000000 00:00 0 
+fffe9e200000-fffe9f200000 rw-p 00000000 00:00 0 
+fffe9f200000-fffe9f600000 rw-p 00000000 00:00 0 
+fffe9f7e0000-fffe9f7f0000 ---p 00000000 00:00 0 
+fffe9f7f0000-fffea07f0000 rw-p 00000000 00:00 0 
+fffea07f0000-fffea0800000 ---p 00000000 00:00 0 
+fffea0800000-fffea1800000 rw-p 00000000 00:00 0 
+fffea1800000-fffea9c00000 rw-p 00000000 00:00 0 
+fffea9c00000-fffeaa0b0000 rw-s 00000000 00:26 66989                      /home/sqlrush/gauss-amm-data/gswlm_userinfo.cfg
+fffeaa1f0000-fffeaa200000 ---p 00000000 00:00 0 
+fffeaa200000-fffeab200000 rw-p 00000000 00:00 0 
+fffeab200000-fffeb1a00000 rw-p 00000000 00:00 0 
+fffeb1b40000-fffeb2240000 rw-p 00000000 00:00 0 
+fffeb2241000-ffff83100000 rw-s 00000000 00:01 36                         /SYSV00eb7941 (deleted)
+ffff83100000-ffff83600000 rw-p 00000000 00:00 0 
+ffff83600000-ffff84842000 r--p 00000000 00:26 3415                       /usr/lib/locale/locale-archive
+ffff84a00000-ffff85c00000 rw-p 00000000 00:00 0 
+ffff85c20000-ffff85c76000 r-xp 00000000 00:26 73250                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/postgresql/security_plugin.so
+ffff85c76000-ffff85c8e000 ---p 00056000 00:26 73250                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/postgresql/security_plugin.so
+ffff85c8e000-ffff85c90000 r--p 0005e000 00:26 73250                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/postgresql/security_plugin.so
+ffff85c90000-ffff85c91000 rw-p 00060000 00:26 73250                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/postgresql/security_plugin.so
+ffff85c98000-ffff85cf0000 r--p 00000000 00:26 3404                       /usr/lib/locale/C.utf8/LC_CTYPE
+ffff85cf0000-ffff865f0000 rw-p 00000000 00:00 0 
+ffff865f0000-ffff86600000 ---p 00000000 00:00 0 
+ffff86600000-ffff86e00000 rw-p 00000000 00:00 0 
+ffff86e00000-ffff87200000 rw-p 00000000 00:00 0 
+ffff8723a000-ffff87270000 rw-p 00000000 00:00 0 
+ffff87270000-ffff8727d000 r-xp 00000000 00:26 6905                       /usr/lib64/libresolv.so.2
+ffff8727d000-ffff8728f000 ---p 0000d000 00:26 6905                       /usr/lib64/libresolv.so.2
+ffff8728f000-ffff87290000 r--p 0000f000 00:26 6905                       /usr/lib64/libresolv.so.2
+ffff87290000-ffff87291000 rw-p 00010000 00:26 6905                       /usr/lib64/libresolv.so.2
+ffff87291000-ffff87293000 rw-p 00000000 00:00 0 
+ffff872a0000-ffff872a4000 r-xp 00000000 00:26 6784                       /usr/lib64/libkeyutils.so.1.10
+ffff872a4000-ffff872bf000 ---p 00004000 00:26 6784                       /usr/lib64/libkeyutils.so.1.10
+ffff872bf000-ffff872c0000 r--p 0000f000 00:26 6784                       /usr/lib64/libkeyutils.so.1.10
+ffff872c0000-ffff872c1000 rw-p 00010000 00:26 6784                       /usr/lib64/libkeyutils.so.1.10
+ffff872d0000-ffff872d1000 r-xp 00000000 00:26 6914                       /usr/lib64/librt.so.1
+ffff872d1000-ffff872ef000 ---p 00001000 00:26 6914                       /usr/lib64/librt.so.1
+ffff872ef000-ffff872f0000 r--p 0000f000 00:26 6914                       /usr/lib64/librt.so.1
+ffff872f0000-ffff872f1000 rw-p 00010000 00:26 6914                       /usr/lib64/librt.so.1
+ffff87300000-ffff87301000 r-xp 00000000 00:26 6897                       /usr/lib64/libpthread.so.0
+ffff87301000-ffff8731f000 ---p 00001000 00:26 6897                       /usr/lib64/libpthread.so.0
+ffff8731f000-ffff87320000 r--p 0000f000 00:26 6897                       /usr/lib64/libpthread.so.0
+ffff87320000-ffff87321000 rw-p 00010000 00:26 6897                       /usr/lib64/libpthread.so.0
+ffff87330000-ffff8735b000 r-xp 00000000 00:26 6806                       /usr/lib64/liblzma.so.5.4.7
+ffff8735b000-ffff8736f000 ---p 0002b000 00:26 6806                       /usr/lib64/liblzma.so.5.4.7
+ffff8736f000-ffff87370000 r--p 0002f000 00:26 6806                       /usr/lib64/liblzma.so.5.4.7
+ffff87370000-ffff87371000 rw-p 00030000 00:26 6806                       /usr/lib64/liblzma.so.5.4.7
+ffff87380000-ffff87381000 r-xp 00000000 00:26 6613                       /usr/lib64/libdl.so.2
+ffff87381000-ffff8739f000 ---p 00001000 00:26 6613                       /usr/lib64/libdl.so.2
+ffff8739f000-ffff873a0000 r--p 0000f000 00:26 6613                       /usr/lib64/libdl.so.2
+ffff873a0000-ffff873a1000 rw-p 00010000 00:26 6613                       /usr/lib64/libdl.so.2
+ffff873b0000-ffff87531000 r-xp 00000000 00:26 6575                       /usr/lib64/libc.so.6
+ffff87531000-ffff8754d000 ---p 00181000 00:26 6575                       /usr/lib64/libc.so.6
+ffff8754d000-ffff87550000 r--p 0018d000 00:26 6575                       /usr/lib64/libc.so.6
+ffff87550000-ffff87552000 rw-p 00190000 00:26 6575                       /usr/lib64/libc.so.6
+ffff87552000-ffff8755e000 rw-p 00000000 00:00 0 
+ffff87560000-ffff87573000 r-xp 00000000 00:26 73382                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgcc_s.so.1
+ffff87573000-ffff8758f000 ---p 00013000 00:26 73382                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgcc_s.so.1
+ffff8758f000-ffff87590000 r--p 0001f000 00:26 73382                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgcc_s.so.1
+ffff87590000-ffff87591000 rw-p 00020000 00:26 73382                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgcc_s.so.1
+ffff875a0000-ffff87620000 r-xp 00000000 00:26 6807                       /usr/lib64/libm.so.6
+ffff87620000-ffff8762f000 ---p 00080000 00:26 6807                       /usr/lib64/libm.so.6
+ffff8762f000-ffff87630000 r--p 0007f000 00:26 6807                       /usr/lib64/libm.so.6
+ffff87630000-ffff87631000 rw-p 00080000 00:26 6807                       /usr/lib64/libm.so.6
+ffff87640000-ffff8766c000 r-xp 00000000 00:26 6964                       /usr/lib64/libtinfo.so.6.4
+ffff8766c000-ffff8767c000 ---p 0002c000 00:26 6964                       /usr/lib64/libtinfo.so.6.4
+ffff8767c000-ffff87680000 r--p 0002c000 00:26 6964                       /usr/lib64/libtinfo.so.6.4
+ffff87680000-ffff87681000 rw-p 00030000 00:26 6964                       /usr/lib64/libtinfo.so.6.4
+ffff87690000-ffff876b7000 r-xp 00000000 00:26 6827                       /usr/lib64/libncurses.so.6.4
+ffff876b7000-ffff876cf000 ---p 00027000 00:26 6827                       /usr/lib64/libncurses.so.6.4
+ffff876cf000-ffff876d0000 r--p 0002f000 00:26 6827                       /usr/lib64/libncurses.so.6.4
+ffff876d0000-ffff876d1000 rw-p 00030000 00:26 6827                       /usr/lib64/libncurses.so.6.4
+ffff876e0000-ffff876ec000 r-xp 00000000 00:26 73379                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libnuma.so.1
+ffff876ec000-ffff876ff000 ---p 0000c000 00:26 73379                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libnuma.so.1
+ffff876ff000-ffff87700000 r--p 0000f000 00:26 73379                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libnuma.so.1
+ffff87700000-ffff87701000 rw-p 00010000 00:26 73379                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libnuma.so.1
+ffff87701000-ffff87705000 rw-p 00000000 00:00 0 
+ffff87710000-ffff87712000 r-xp 00000000 00:26 24660                      /usr/lib64/libaio.so.1.0.2
+ffff87712000-ffff8772f000 ---p 00002000 00:26 24660                      /usr/lib64/libaio.so.1.0.2
+ffff8772f000-ffff87730000 r--p 0000f000 00:26 24660                      /usr/lib64/libaio.so.1.0.2
+ffff87730000-ffff87731000 rw-p 00010000 00:26 24660                      /usr/lib64/libaio.so.1.0.2
+ffff87740000-ffff878bd000 r-xp 00000000 00:26 73381                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libstdc++.so.6
+ffff878bd000-ffff878d4000 ---p 0017d000 00:26 73381                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libstdc++.so.6
+ffff878d4000-ffff878e0000 r--p 00184000 00:26 73381                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libstdc++.so.6
+ffff878e0000-ffff878e1000 rw-p 00190000 00:26 73381                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libstdc++.so.6
+ffff878e1000-ffff878e4000 rw-p 00000000 00:00 0 
+ffff878f0000-ffff878fd000 r-xp 00000000 00:26 73301                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkrb5support_gauss.so.0.1
+ffff878fd000-ffff8790f000 ---p 0000d000 00:26 73301                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkrb5support_gauss.so.0.1
+ffff8790f000-ffff87910000 r--p 0000f000 00:26 73301                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkrb5support_gauss.so.0.1
+ffff87910000-ffff87911000 rw-p 00010000 00:26 73301                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkrb5support_gauss.so.0.1
+ffff87920000-ffff87935000 r-xp 00000000 00:26 73292                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkdb5.so.10.0
+ffff87935000-ffff8794f000 ---p 00015000 00:26 73292                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkdb5.so.10.0
+ffff8794f000-ffff87950000 r--p 0001f000 00:26 73292                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkdb5.so.10.0
+ffff87950000-ffff87951000 rw-p 00020000 00:26 73292                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkdb5.so.10.0
+ffff87960000-ffff8797e000 r-xp 00000000 00:26 73289                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkadm5srv_mit.so.12.0
+ffff8797e000-ffff8798e000 ---p 0001e000 00:26 73289                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkadm5srv_mit.so.12.0
+ffff8798e000-ffff87990000 r--p 0001e000 00:26 73289                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkadm5srv_mit.so.12.0
+ffff87990000-ffff87991000 rw-p 00020000 00:26 73289                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkadm5srv_mit.so.12.0
+ffff879a0000-ffff879b7000 r-xp 00000000 00:26 73285                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkadm5clnt_mit.so.12.0
+ffff879b7000-ffff879ce000 ---p 00017000 00:26 73285                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkadm5clnt_mit.so.12.0
+ffff879ce000-ffff879d0000 r--p 0001e000 00:26 73285                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkadm5clnt_mit.so.12.0
+ffff879d0000-ffff879d1000 rw-p 00020000 00:26 73285                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkadm5clnt_mit.so.12.0
+ffff879e0000-ffff87a27000 r-xp 00000000 00:26 73281                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libk5crypto_gauss.so.3.1
+ffff87a27000-ffff87a3e000 ---p 00047000 00:26 73281                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libk5crypto_gauss.so.3.1
+ffff87a3e000-ffff87a40000 r--p 0004e000 00:26 73281                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libk5crypto_gauss.so.3.1
+ffff87a40000-ffff87a41000 rw-p 00050000 00:26 73281                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libk5crypto_gauss.so.3.1
+ffff87a50000-ffff87a6f000 r-xp 00000000 00:26 73278                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgssrpc_gauss.so.4.2
+ffff87a6f000-ffff87a7f000 ---p 0001f000 00:26 73278                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgssrpc_gauss.so.4.2
+ffff87a7f000-ffff87a80000 r--p 0001f000 00:26 73278                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgssrpc_gauss.so.4.2
+ffff87a80000-ffff87a81000 rw-p 00020000 00:26 73278                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgssrpc_gauss.so.4.2
+ffff87a90000-ffff87b71000 r-xp 00000000 00:26 73298                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkrb5_gauss.so.3.3
+ffff87b71000-ffff87b84000 ---p 000e1000 00:26 73298                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkrb5_gauss.so.3.3
+ffff87b84000-ffff87b90000 r--p 000e4000 00:26 73298                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkrb5_gauss.so.3.3
+ffff87b90000-ffff87b92000 rw-p 000f0000 00:26 73298                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libkrb5_gauss.so.3.3
+ffff87ba0000-ffff87bfd000 r-xp 00000000 00:26 73275                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgssapi_krb5_gauss.so.2.2
+ffff87bfd000-ffff87c0e000 ---p 0005d000 00:26 73275                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgssapi_krb5_gauss.so.2.2
+ffff87c0e000-ffff87c10000 r--p 0005e000 00:26 73275                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgssapi_krb5_gauss.so.2.2
+ffff87c10000-ffff87c11000 rw-p 00060000 00:26 73275                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libgssapi_krb5_gauss.so.2.2
+ffff87c11000-ffff87c12000 rw-p 00000000 00:00 0 
+ffff87c20000-ffff87c23000 r-xp 00000000 00:26 73272                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcom_err_gauss.so.3.0
+ffff87c23000-ffff87c3f000 ---p 00003000 00:26 73272                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcom_err_gauss.so.3.0
+ffff87c3f000-ffff87c40000 r--p 0000f000 00:26 73272                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcom_err_gauss.so.3.0
+ffff87c40000-ffff87c41000 rw-p 00010000 00:26 73272                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcom_err_gauss.so.3.0
+ffff87c50000-ffff87cf8000 r-xp 00000000 00:26 73364                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libzstd.so.1
+ffff87cf8000-ffff87d0f000 ---p 000a8000 00:26 73364                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libzstd.so.1
+ffff87d0f000-ffff87d10000 r--p 000af000 00:26 73364                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libzstd.so.1
+ffff87d10000-ffff87d11000 rw-p 000b0000 00:26 73364                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libzstd.so.1
+ffff87d20000-ffff87deb000 r-xp 00000000 00:26 73524                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libdcf.so
+ffff87deb000-ffff87e08000 ---p 000cb000 00:26 73524                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libdcf.so
+ffff87e08000-ffff87e10000 r--p 000d8000 00:26 73524                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libdcf.so
+ffff87e10000-ffff87e26000 rw-p 000e0000 00:26 73524                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libdcf.so
+ffff87e26000-ffff97fdf000 rw-p 00000000 00:00 0 
+ffff97fe0000-ffff98000000 r-xp 00000000 00:26 73166                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcgroup.so
+ffff98000000-ffff9801f000 ---p 00020000 00:26 73166                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcgroup.so
+ffff9801f000-ffff98020000 r--p 0002f000 00:26 73166                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcgroup.so
+ffff98020000-ffff98021000 rw-p 00030000 00:26 73166                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcgroup.so
+ffff98021000-ffff9827b000 rw-p 00000000 00:00 0 
+ffff98280000-ffff9828a000 r-xp 00000000 00:26 73334                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcjson.so.1.7.15
+ffff9828a000-ffff9829f000 ---p 0000a000 00:26 73334                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcjson.so.1.7.15
+ffff9829f000-ffff982a0000 r--p 0000f000 00:26 73334                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcjson.so.1.7.15
+ffff982a0000-ffff982a1000 rw-p 00010000 00:26 73334                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcjson.so.1.7.15
+ffff982b0000-ffff982e3000 r-xp 00000000 00:26 73339                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/liblz4.so.1
+ffff982e3000-ffff982ff000 ---p 00033000 00:26 73339                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/liblz4.so.1
+ffff982ff000-ffff98300000 r--p 0003f000 00:26 73339                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/liblz4.so.1
+ffff98300000-ffff98301000 rw-p 00040000 00:26 73339                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/liblz4.so.1
+ffff98310000-ffff98382000 r-xp 00000000 00:26 73536                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcurl.so.4.7.0
+ffff98382000-ffff9839d000 ---p 00072000 00:26 73536                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcurl.so.4.7.0
+ffff9839d000-ffff983a0000 r--p 0007d000 00:26 73536                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcurl.so.4.7.0
+ffff983a0000-ffff983a2000 rw-p 00080000 00:26 73536                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcurl.so.4.7.0
+ffff983a2000-ffff983a3000 rw-p 00000000 00:00 0 
+ffff983b0000-ffff983f5000 r-xp 00000000 00:26 73310                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/liblog4cpp.so.5
+ffff983f5000-ffff9840e000 ---p 00045000 00:26 73310                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/liblog4cpp.so.5
+ffff9840e000-ffff98410000 r--p 0004e000 00:26 73310                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/liblog4cpp.so.5
+ffff98410000-ffff98411000 rw-p 00050000 00:26 73310                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/liblog4cpp.so.5
+ffff98420000-ffff98448000 r-xp 00000000 00:26 73325                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libnghttp2.so.14
+ffff98448000-ffff9845d000 ---p 00028000 00:26 73325                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libnghttp2.so.14
+ffff9845d000-ffff98460000 r--p 0002d000 00:26 73325                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libnghttp2.so.14
+ffff98460000-ffff98461000 rw-p 00030000 00:26 73325                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libnghttp2.so.14
+ffff98470000-ffff98566000 r-xp 00000000 00:26 73321                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libiconv.so.2
+ffff98566000-ffff9857e000 ---p 000f6000 00:26 73321                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libiconv.so.2
+ffff9857e000-ffff98580000 r--p 000fe000 00:26 73321                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libiconv.so.2
+ffff98580000-ffff98581000 rw-p 00100000 00:26 73321                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libiconv.so.2
+ffff98590000-ffff985c4000 r-xp 00000000 00:26 73307                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libpcre.so.1
+ffff985c4000-ffff985df000 ---p 00034000 00:26 73307                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libpcre.so.1
+ffff985df000-ffff985e0000 r--p 0003f000 00:26 73307                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libpcre.so.1
+ffff985e0000-ffff985e1000 rw-p 00040000 00:26 73307                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libpcre.so.1
+ffff985f0000-ffff98612000 r-xp 00000000 00:26 73312                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libeSDKLogAPI.so
+ffff98612000-ffff9862f000 ---p 00022000 00:26 73312                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libeSDKLogAPI.so
+ffff9862f000-ffff98630000 r--p 0002f000 00:26 73312                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libeSDKLogAPI.so
+ffff98630000-ffff98631000 rw-p 00030000 00:26 73312                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libeSDKLogAPI.so
+ffff98640000-ffff98684000 r-xp 00000000 00:26 73313                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libeSDKOBS.so
+ffff98684000-ffff9869f000 ---p 00044000 00:26 73313                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libeSDKOBS.so
+ffff9869f000-ffff986a0000 r--p 0004f000 00:26 73313                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libeSDKOBS.so
+ffff986a0000-ffff986a1000 rw-p 00050000 00:26 73313                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libeSDKOBS.so
+ffff986a1000-ffff986a2000 rw-p 00000000 00:00 0 
+ffff986b0000-ffff986c4000 r-xp 00000000 00:26 73330                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libz.so.1.2.12
+ffff986c4000-ffff986df000 ---p 00014000 00:26 73330                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libz.so.1.2.12
+ffff986df000-ffff986e0000 r--p 0001f000 00:26 73330                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libz.so.1.2.12
+ffff986e0000-ffff986e1000 rw-p 00020000 00:26 73330                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libz.so.1.2.12
+ffff986f0000-ffff98906000 r-xp 00000000 00:26 72663                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcrypto.so.1.1
+ffff98906000-ffff98917000 ---p 00216000 00:26 72663                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcrypto.so.1.1
+ffff98917000-ffff98940000 r--p 00217000 00:26 72663                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcrypto.so.1.1
+ffff98940000-ffff98942000 rw-p 00240000 00:26 72663                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libcrypto.so.1.1
+ffff98942000-ffff98946000 rw-p 00000000 00:00 0 
+ffff98950000-ffff989c1000 r-xp 00000000 00:26 72656                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libssl.so.1.1
+ffff989c1000-ffff989d7000 ---p 00071000 00:26 72656                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libssl.so.1.1
+ffff989d7000-ffff989e0000 r--p 00077000 00:26 72656                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libssl.so.1.1
+ffff989e0000-ffff989e4000 rw-p 00080000 00:26 72656                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libssl.so.1.1
+ffff989f0000-ffff98a22000 r-xp 00000000 00:26 6599                       /usr/lib64/libcrypt.so.1.1.0
+ffff98a22000-ffff98a3f000 ---p 00032000 00:26 6599                       /usr/lib64/libcrypt.so.1.1.0
+ffff98a3f000-ffff98a40000 r--p 0003f000 00:26 6599                       /usr/lib64/libcrypt.so.1.1.0
+ffff98a40000-ffff98a41000 rw-p 00040000 00:26 6599                       /usr/lib64/libcrypt.so.1.1.0
+ffff98a41000-ffff98a49000 rw-p 00000000 00:00 0 
+ffff98a49000-ffff98a50000 r--s 00000000 00:26 6365                       /usr/lib64/gconv/gconv-modules.cache
+ffff98a50000-ffff98ba6000 r-xp 00000000 00:26 73315                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libxml2.so.2
+ffff98ba6000-ffff98bb7000 ---p 00156000 00:26 73315                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libxml2.so.2
+ffff98bb7000-ffff98bc0000 r--p 00157000 00:26 73315                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libxml2.so.2
+ffff98bc0000-ffff98bc1000 rw-p 00160000 00:26 73315                      /home/sqlrush/gauss-amm-src/mppdb_temp_install/lib/libxml2.so.2
+ffff98bc1000-ffff98bc2000 rw-p 00000000 00:00 0 
+ffff98bc6000-ffff98bd0000 rw-p 00000000 00:00 0 
+ffff98bd0000-ffff98bf4000 r-xp 00000000 00:26 3399                       /usr/lib/ld-linux-aarch64.so.1
+ffff98bf5000-ffff98c01000 rw-p 00000000 00:00 0 
+ffff98c02000-ffff98c05000 rw-s 00000000 00:a9 2                          /dev/shm/gstrace_trace_cfg_15432
+ffff98c05000-ffff98c06000 r--p 00000000 00:26 3403                       /usr/lib/locale/C.utf8/LC_COLLATE
+ffff98c06000-ffff98c08000 rw-p 00000000 00:00 0 
+ffff98c08000-ffff98c0c000 r--p 00000000 00:00 0                          [vvar]
+ffff98c0c000-ffff98c0e000 r-xp 00000000 00:00 0                          [vdso]
+ffff98c0e000-ffff98c10000 r--p 0002e000 00:26 3399                       /usr/lib/ld-linux-aarch64.so.1
+ffff98c10000-ffff98c12000 rw-p 00030000 00:26 3399                       /usr/lib/ld-linux-aarch64.so.1
+ffffdffa7000-ffffdffce000 rw-p 00000000 00:00 0                          [stack]
+
+====== /proc/meminfo ======
+MemTotal:       65777140 kB
+MemFree:        37425844 kB
+MemAvailable:   50293464 kB
+Buffers:             104 kB
+Cached:          7134456 kB
+SwapCached:          980 kB
+Active:          7712888 kB
+Inactive:        4827836 kB
+Active(anon):    7474816 kB
+Inactive(anon):  4427184 kB
+Active(file):     238072 kB
+Inactive(file):   400652 kB
+Unevictable:          84 kB
+Mlocked:               0 kB
+SwapTotal:      66825708 kB
+SwapFree:       66785344 kB
+Dirty:              1852 kB
+Writeback:             0 kB
+AnonPages:       5374400 kB
+Mapped:          5939772 kB
+Shmem:           6495596 kB
+KReclaimable:   12876336 kB
+Slab:           14591460 kB
+SReclaimable:   12876336 kB
+SUnreclaim:      1715124 kB
+KernelStack:       37152 kB
+PageTables:       115392 kB
+SecPageTables:         0 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:    99714276 kB
+Committed_AS:   44379452 kB
+VmallocTotal:   135288315904 kB
+VmallocUsed:      329644 kB
+VmallocChunk:          0 kB
+Percpu:            11016 kB
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+ShmemPmdMapped:        0 kB
+FileHugePages:         0 kB
+FilePmdMapped:         0 kB
+Balloon:               0 kB
+
+Linux 7.0.11-orbstack-00354-gde2ab3f9e944 #1 SMP PREEMPT Thu Jun  4 11:12:11 UTC 2026 aarch64
+
+FFIC end time: 1785315772

@@ -1,0 +1,99 @@
+ .../.gitee/ISSUE_TEMPLATE.en.md => /dev/null       |      23 -
+ .../PULL_REQUEST_TEMPLATE.en.md => /dev/null       |      21 -
+ .../PULL_REQUEST_TEMPLATE.zh-CN.md => /dev/null    |      24 -
+ .../contrib/Makefile                               |       1 +
+ .../contrib/pg_archivecleanup/pg_archivecleanup    |     Bin 0 -> 510496 bytes
+ .../contrib/pg_xlogdump/replorigindesc.cpp         |       1 +
+ .../openeuler_aarch64/roach_api.so => /dev/null    |     Bin 1079104 -> 0 bytes
+ .../contrib/workmem_dtree/Makefile                 |      24 +
+ .../workmem_dtree/expected/workmem_dtree.out       |      56 +
+ .../contrib/workmem_dtree/sql/workmem_dtree.sql    |      37 +
+ .../contrib/workmem_dtree/workmem_dtree--1.0.sql   |      32 +
+ .../contrib/workmem_dtree/workmem_dtree.control    |       5 +
+ .../contrib/workmem_dtree/workmem_dtree.cpp        |     135 +
+ .../contrib/workmem_dtree/workmem_model.cpp        |     998 +
+ .../contrib/workmem_dtree/workmem_model.h          |      81 +
+ .../gauss-amm-master/docs/AMM_KERNEL_CHANGES.zh.md |     438 +
+ .../gauss-amm-master/docs/AMM_USAGE.zh.md          |     365 +
+ .../src/bin/gs_guc/cluster_guc.conf                |      16 +
+ .../gauss-amm-master/src/bin/gs_loader/gs_loader   |     Bin 0 -> 30760 bytes
+ .../src/common/backend/catalog/Makefile            |       2 +
+ .../src/common/backend/catalog/builtin_funcs.ini   |      64 +
+ .../src/common/backend/nodes/nodes.cpp             |       1 +
+ .../common/backend/utils/misc/guc/guc_storage.cpp  |     516 +-
+ .../src/common/backend/utils/mmgr/Makefile         |       2 +-
+ .../src/common/backend/utils/mmgr/ammgranule.cpp   |     578 +
+ .../common/backend/utils/mmgr/workmem_dtree.cpp    |     130 +
+ .../backend/utils/mmgr/workmem_dtree_model.cpp     |     998 +
+ .../src/common/backend/utils/sort/tuplesort.cpp    |     358 +-
+ .../common/interfaces/ecpg/preproc/c_kwlist_d.h    |     118 +
+ .../common/interfaces/ecpg/preproc/ecpg_kwlist_d.h |     152 +
+ .../common/interfaces/ecpg/preproc/kwlookup.cpp    |       1 +
+ .../src/common/interfaces/ecpg/preproc/pgc.cpp     |    5147 +
+ .../src/common/interfaces/ecpg/preproc/preproc.cpp |  101204 ++
+ .../src/common/interfaces/ecpg/preproc/preproc.hpp |     899 +
+ .../common/interfaces/ecpg/preproc/preproc.output  | 1021185 +++++++++++++++++
+ .../src/common/interfaces/ecpg/preproc/preproc.y   |   25890 +
+ .../common/pl/plpgsql/src/pl_reserved_kwlist_d.h   |     172 +
+ .../common/pl/plpgsql/src/pl_unreserved_kwlist_d.h |     255 +
+ .../gausskernel/process/postmaster/pagewriter.cpp  |      60 +-
+ .../src/gausskernel/process/postmaster/pgstat.cpp  |      19 +-
+ .../src/gausskernel/runtime/executor/execMain.cpp  |      16 +-
+ .../src/gausskernel/runtime/executor/nodeHash.cpp  |    1031 +-
+ .../gausskernel/runtime/executor/nodeHashjoin.cpp  |      75 +-
+ .../gausskernel/storage/access/transam/xact.cpp    |       3 +
+ .../src/gausskernel/storage/buffer/Makefile        |       2 +-
+ .../src/gausskernel/storage/buffer/buf_init.cpp    |       5 +-
+ .../src/gausskernel/storage/buffer/buf_table.cpp   |      19 +
+ .../src/gausskernel/storage/buffer/bufmgr.cpp      |     187 +-
+ .../src/gausskernel/storage/buffer/freelist.cpp    |      81 +-
+ .../src/gausskernel/storage/buffer/gs_amm.cpp      |    6852 +
+ .../src/gausskernel/storage/buffer/gs_amm_io.cpp   |     220 +
+ .../gausskernel/storage/buffer/gs_amm_query.cpp    |     996 +
+ .../src/gausskernel/storage/file/buffile.cpp       |      28 +-
+ .../storage/xlog_share_storage/errmsg_bak.h        |   47872 +
+ .../gauss-amm-master/src/include/cm/cm_errcodes.h  |       1 +
+ .../include/communication/commproxy_interface.h    |       2 +-
+ .../src/include/executor/hashjoin.h                |      14 +
+ .../include/knl/knl_guc/knl_session_attr_storage.h |       1 +
+ .../src/include/knl/knl_session.h                  |       1 -
+ .../src/include/nodes/memnodes.h                   |      18 +-
+ .../src/include/nodes/nodes.h                      |       1 +
+ .../gauss-amm-master/src/include/parser/kwlist_d.h |    1547 +
+ .../src/include/pgstat.h                           |       3 +-
+ .../src/include/storage/buf/buf_internals.h        |       6 +-
+ .../gauss-amm-master/src/include/storage/gs_amm.h  |     311 +
+ .../src/include/storage/gs_amm_io.h                |      22 +
+ .../src/include/storage/gs_amm_types.h             |      18 +
+ .../src/include/utils/ammgranule.h                 |      32 +
+ .../src/include/utils/builtins.h                   |      18 +
+ .../src/include/utils/memutils.h                   |       1 +
+ .../src/include/utils/workmem_dtree_model.h        |      86 +
+ .../src/lib/cm_common/cm_errcodes.h                |      25 +
+ .../src/lib/page_compression/cfs_tools.cpp         |       1 +
+ .../src/lib/page_compression/checksum_impl.cpp     |       1 +
+ .../src/lib/page_compression/pg_lzcompress.cpp     |       1 +
+ .../src/lib/page_compression/pg_lzcompress.h       |       1 +
+ .../src/lib/page_compression/pgsleep.cpp           |       1 +
+ .../src/lib/page_compression/storage/lwlocknames.h |       1 +
+ .../src/lib/page_compression/utils/errcodes.h      |       1 +
+ .../isolation/expected/gs_amm_granule_epoch.out    |      15 +
+ .../src/test/isolation/isolation_schedule          |       1 +
+ .../src/test/isolation/isolationtester             |     Bin 0 -> 101600 bytes
+ .../test/isolation/specs/gs_amm_granule_epoch.spec |      36 +
+ .../src/test/isolation/specscanner.cpp             |    2154 +
+ .../test/regress/expected/ce_copy.out => /dev/null |     103 -
+ .../test/regress/expected/gs_amm_external_sort.out |      87 +
+ .../regress/expected/gs_amm_idle_ap_reclaim.out    |     118 +
+ .../dev/null                                       |       0
+ .../hw_audit_rotation_interval.out => /dev/null    |      13 -
+ .../hw_audit_rotation_size.out => /dev/null        |      42 -
+ .../expected/hw_audit_space.out => /dev/null       |      57 -
+ .../expected/hw_cipher_sm4.out => /dev/null        |     117 -
+ .../src/test/regress/sql/gs_amm_external_sort.sql  |      31 +
+ .../test/regress/sql/gs_amm_idle_ap_reclaim.sql    |      36 +
+ .../src/test/ut/CMakeLists.txt                     |       3 +-
+ .../src/test/ut/amm/CMakeLists.txt                 |      46 +
+ .../src/test/ut/amm/ut_amm_epoch.cpp               |      28 +
+ .../src/test/ut/amm/ut_ammgranule_release.cpp      |     212 +
+ 98 files changed, 1221946 insertions(+), 662 deletions(-)

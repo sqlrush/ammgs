@@ -1,0 +1,48 @@
+SELECT position('reset=true' in gs_amm_reset_state()) = 1 AS reset;
+ reset 
+-------
+ t
+(1 row)
+
+SELECT gs_amm_update_tp_metrics(100.0, 0.0, 0);
+                                                                   gs_amm_update_tp_metrics                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ tp_metrics_updated=true tp_baseline_tps=100.000 tp_recent_tps=100.000 tp_raw_drop_ratio=0.000000 tp_window_ms=0 resize_guard_state=ready resize_cooldown_ms=0
+(1 row)
+
+SELECT gs_amm_update_tp_metrics(10.0, 0.0, 0);
+                                                                 gs_amm_update_tp_metrics                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+ tp_metrics_updated=true tp_baseline_tps=95.500 tp_recent_tps=55.000 tp_raw_drop_ratio=0.424084 tp_window_ms=0 resize_guard_state=hot resize_cooldown_ms=0
+(1 row)
+
+WITH s AS (SELECT gs_amm_status() AS v)
+SELECT gs_amm_resize_shared_buffers(
+  split_part(split_part(v, 'max_mb=', 2), ' ', 1)::integer -
+  split_part(split_part(v, 'resize_granule_mb=', 2), ' ', 1)::integer)
+FROM s;
+                                                                                                                                   gs_amm_resize_shared_buffers                                                                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ resize=guard_blocked reason=hot active_blocks=131072 active_mb=1024 target_blocks=122880 target_mb=960 max_blocks=131072 max_mb=1024 resize_serialized=true pending_retire_blocks=0 resize_deferred=false resize_granule_mb=64 resize_granule_aligned=true unsafe_dirty_or_pinned_invalidations=0
+(1 row)
+
+WITH s AS (SELECT gs_amm_status() AS v)
+SELECT split_part(split_part(v, 'active_blocks=', 2), ' ', 1) =
+       split_part(split_part(v, 'max_blocks=', 2), ' ', 1) AS pool_unchanged,
+       split_part(split_part(v, ' guard_block_count=', 2), ' ', 1)::integer > 0 AS guard_counted,
+       split_part(split_part(v, ' rollback_count=', 2), ' ', 1)::integer > 0 AS rollback_counted,
+       position('tp_guard_hot=true ' in v) > 0 AS guard_hot,
+       position('granule_state_consistent=true ' in v) > 0 AS state_consistent,
+       position('inactive_granule_buffer_violations=0 ' in v) > 0 AS no_inactive_violation
+FROM s;
+ pool_unchanged | guard_counted | rollback_counted | guard_hot | state_consistent | no_inactive_violation 
+----------------+---------------+------------------+-----------+------------------+-----------------------
+ t              | t             | t                | t         | t                | t
+(1 row)
+
+SELECT position('reset=true' in gs_amm_reset_state()) = 1 AS restored;
+ restored 
+----------
+ t
+(1 row)
+

@@ -1,0 +1,55 @@
+SELECT position('reset=true' in gs_amm_reset_state()) = 1 AS reset;
+ reset 
+-------
+ t
+(1 row)
+
+SELECT gs_amm_set_dynamic_target_mb(256);
+                            gs_amm_set_dynamic_target_mb                             
+-------------------------------------------------------------------------------------
+ set_dynamic_target=true dynamic_target_mb=256 dynamic_used_mb=0 dynamic_free_mb=256
+(1 row)
+
+SELECT position('chosen_action=BORROW_FROM_BUFFER' in gs_amm_controller_step(64, 0, 0)) = 1 AS borrowed;
+ borrowed 
+----------
+ t
+(1 row)
+
+ALTER SYSTEM SET gs_amm_allocator_only_mode TO 'off';
+ALTER SYSTEM SET
+ALTER SYSTEM SET gs_amm_feedback_only_mode TO 'on';
+ALTER SYSTEM SET
+ALTER SYSTEM SET gs_amm_native_auto_mode TO 'on';
+ALTER SYSTEM SET
+SELECT pg_reload_conf();
+ pg_reload_conf 
+----------------
+ t
+(1 row)
+
+SELECT pg_sleep(1);
+ pg_sleep 
+----------
+ 
+(1 row)
+
+SHOW gs_amm_feedback_only_mode;
+ gs_amm_feedback_only_mode 
+---------------------------
+ on
+(1 row)
+
+SELECT count(*) AS first_count
+FROM (SELECT lpad(g::text, 1024, 'x') AS payload FROM generate_series(1, 5000) g ORDER BY payload) s;
+ first_count 
+-------------
+        5000
+(1 row)
+
+WITH s AS (SELECT gs_amm_status() AS v)
+SELECT position('feedback_completed_count=1' in v) > 0 AS first_completed,
+       position('feedback_stable_windows=1' in v) > 0 AS first_stable,
+       position('feedback_last_action=stable' in v) > 0 AS first_action_stable
+FROM s;
+connection to server was lost
