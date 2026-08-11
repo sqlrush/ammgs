@@ -32,7 +32,7 @@
 |---|---|---|---|
 | `max_process_memory` | **7424 MB** | postmaster | 数据库进程内存总上限（本次由 4 GB 调整而来，理由见 §1.2.2） |
 | `enable_memory_limit` | **on** | postmaster | 内存保护，实际生效 |
-| `max_dynamic_memory` | **2134 MB** | 派生 | 动态内存上限，`work_mem` 从此支取 |
+| `max_dynamic_memory` | **2134 MB** | **派生量，非 GUC** | 动态内存上限，`work_mem` 从此支取（详见 §1.2.3） |
 | `shared_buffers` | 2048 MB | postmaster | 共享缓冲池 |
 | `cstore_buffers` | 512 MB | postmaster | 列存缓冲（本测试无列存表） |
 | `wal_buffers` | 16 MB | postmaster | WAL 缓冲 |
@@ -151,6 +151,36 @@ gs_total_memory_detail：
 ```
 
 **这是本次压力档位设计的直接依据**：AP 可用的动态空间约 `2134 − 542 ≈ 1592 MB`，超出部分才需要向共享池借。
+
+#### 1.2.3 关于 `max_dynamic_memory` 的性质
+
+本报告把它当作压力档位的主参照，需说明它的来源与可配置性，避免与 GUC 混淆。
+
+| 问题 | 结论 |
+|---|---|
+| 是原生 openGauss 的吗？ | **是。** `memprot.cpp`、`memory_func.cpp`、`pgstatfuncs.cpp` 均**不在** AMM 相对 v5.0.2 改动的 98 个文件之列（见 `evidence/upstream-v5.0.2-name-status.diff`），属基线代码 |
+| 是可配置参数吗？ | **不是。** `pg_settings` 中不存在该项，无法直接设置 |
+| 那它是什么？ | **派生量**，由原生视图 `gs_total_memory_detail` 暴露 |
+
+计算方式（`memprot.cpp:978`，原生代码）：
+
+```c
+maxChunksPerProcess = ((unsigned int)avail_mem >> BITS_IN_KB) - reserved_mem;
+//  其中 avail_mem = max_process_memory − cstore_buffers
+//                   − (udf_memory_limit − UDF_DEFAULT_MEMORY) − 共享内存
+//  reserved_mem 为后台线程与 WAL 缓冲预留，本环境实测 348 MB
+```
+
+代入本次配置：
+
+```
+avail_mem = 7602176 − 524288 − 0 − 4535682 = 2542206 kB ≈ 2482 MB
+max_dynamic_memory = 2482 − 348 = 2134 MB     ← 与实测日志一致
+```
+
+**因此它只能通过调整 `max_process_memory`、`cstore_buffers` 或共享内存规模来间接改变，不能直接设定。** 本次即是通过把 `max_process_memory` 由 4 GB 调至 7424 MB，使其达到 2134 MB 并越过内存保护的 2048 MB 门槛。
+
+选它作主参照而非 `max_process_memory` 的理由：**AP 的排序内存直接从动态内存支取**，它才是决定"AP 何时缺内存"的那个量；`max_process_memory` 只是包住共享内存与动态内存的外层信封。
 
 ### 1.3 AMM 引入的内存模型与参数（仅开启组生效）
 
@@ -279,9 +309,9 @@ if (!gs_amm_native_auto_mode || !top_level_executor)
 
 | 参照物 | 值 | 来源 | 在档位设计中的角色 |
 |---|---|---|---|
-| `max_dynamic_memory` | **2134 MB** | 原生 openGauss（实测派生） | **主参照**：AP 的 `work_mem` 从此支取，用满才需要借 |
-| `shared_buffers` | 2048 MB | 原生 openGauss | 借出的来源，可迁移带宽 = 2048 − 512 |
-| `max_process_memory` | 7424 MB | 原生 openGauss | 总信封，前两者都在其中 |
+| `max_dynamic_memory` | **2134 MB** | 原生 openGauss，**派生量非 GUC**（§1.2.3） | **主参照**：AP 的 `work_mem` 从此支取，用满才需要借 |
+| `shared_buffers` | 2048 MB | 原生 openGauss GUC | 借出的来源，可迁移带宽 = 2048 − 512 |
+| `max_process_memory` | 7424 MB | 原生 openGauss GUC | 总信封，前两者都在其中 |
 
 > 主参照是 `max_dynamic_memory` 而非 `max_process_memory`。因为 AP 的排序内存直接从动态内存支取，只有把 2134 MB 用满，才谈得上向共享池借；`max_process_memory` 只是包住两者的外层信封，不直接决定 AP 何时缺内存。
 
