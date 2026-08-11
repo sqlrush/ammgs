@@ -15,6 +15,21 @@ gauss-amm 相对原生 openGauss 5.0.2 的源码分析、ARM64 构建、OrbStack
 
 完整结论见 [源码对比与实测报告](docs/gauss-amm-analysis-report.md)。
 
+## AMM 开启/关闭对照实验（2026-08-11）
+
+按 PPT 五阶段跑了一次 A/B，唯一变量 `gs_amm_native_auto_mode`。同一条 SQL、同样 449387 行、同一执行计划：
+
+| | AMM 介入 | AMM 不介入 |
+|---|---|---|
+| Sort Method | `external merge` | `quicksort` |
+| 内存 / 磁盘 | Disk **238368 kB** | Memory **475082 kB**（达成率 90.6%） |
+| 查询耗时 | 914.9 ms | **669.5 ms** |
+| TP 吞吐（9 min） | 251,789 ops | **356,524 ops**（+41.6%） |
+
+四项验收行为（借内存 / TP 托底 / 队列保护 / 扩共享缓存）**无一达成**。根因是 work_mem 决策树对该排序低估约 **600 倍**：模型叶子 `0.78155095881963832` MB，实需 464 MB。
+
+完整数据与源码分析见 [AMM 开启/关闭对照测试报告](docs/gauss-amm-ab-test-report.md)。
+
 ## 基线
 
 | 对象 | 精确版本 |
@@ -29,6 +44,7 @@ gauss-amm 相对原生 openGauss 5.0.2 的源码分析、ARM64 构建、OrbStack
 ```text
 docs/
   gauss-amm-analysis-report.md       中文源码对比、构建部署、风险与建议
+  gauss-amm-ab-test-report.md        AMM 开启/关闭对照测试报告（PPT 五阶段 + 决策树源码分析）
 evidence/
   upstream-v5.0.2-name-status.diff  98 个差异文件的机器可读清单
   upstream-v5.0.2.stat              diff 统计
@@ -36,10 +52,22 @@ evidence/
   feedback-only-sigsegv-ffic.log    崩溃现场与调用栈
   build-*.log                       两次 ARM64 构建驱动日志
   server-log-tail.log               最终服务器日志尾部
+  ab-20260811-172413/               A/B 对照实验全部原始数据
+    amm-ammon-*.csv                 AMM 介入组采样（459 行 × 40 列）
+    amm-ammoff-*.csv                AMM 不介入组采样（720 行 × 40 列）
+    probe-ab-workmem.txt            EXPLAIN 直接测量 Sort 算子实得内存
+    prestate/poststate-*.txt        两组起止池状态与准入计数器
+    tp-*/ap-*/watchdog-*.log        负载与看门狗日志
 scripts/
   start-gauss-amm.sh                VM 内启动辅助脚本
   stop-gauss-amm.sh                 VM 内停止辅助脚本
   configure-gauss-amm.sql           安全默认配置
+  run-ab.sh                         A/B 主编排（五阶段 × 两模式，约 28 分钟）
+  sample-amm.sh                     40 列 CSV 采样器
+  ap-holder.sh                      复刻 gsbench 201 的 AP 负载
+  tp-watchdog3.sh                   存活看门狗
+  probe-ab-workmem.sh               EXPLAIN 直接测量算子内存
+  analyze-ab.sh                     逐阶段并排分析
 SHA256SUMS                          仓库资料文件校验值
 ```
 
