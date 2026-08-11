@@ -13,7 +13,7 @@
 # 五阶段对应 PPT step①~⑤，每阶段 2 分钟：
 #   ① 内存富裕   TP2 + AP2 ×128MB
 #   ② 触及上限   TP2 + AP2 ×512MB      ← 借内存
-#   ③ 保护基准   TP2 + AP4 ×512MB      ← 触地板
+#   ③ 保护基准   TP2 + AP7 ×512MB      ← 触地板（按 max_process_memory=7424MB 反算）
 #   ④ 反压排队   TP2 + AP8 ×512MB      ← 队列保护
 #   ⑤ 基准突增   TP8 + AP8 ×512MB      ← TP 流量增加是否扩共享缓存
 set -uo pipefail
@@ -76,7 +76,7 @@ run_one() {          # $1 = on|off ; $2 = 标签
   sleep 45
 
   for spec in "stage1 2 131072 $R_128MB" "stage2 2 524288 $R_512MB" \
-              "stage3 4 524288 $R_512MB" "stage4 8 524288 $R_512MB"; do
+              "stage3 7 524288 $R_512MB" "stage4 8 524288 $R_512MB"; do
     set -- $spec
     mark "$1"
     echo "[$(date -Is)] $1 : AP×$2 work_mem=$3kB range=$4"
