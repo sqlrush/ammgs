@@ -245,7 +245,70 @@ grant_mb = gs_amm_clamp_grant_mb(effective_ap_demand_mb, free_mb);
 
 初始值由 `gs_amm_dynamic_target_mb` 给定：**编译期默认 512 MB，本测试环境配置为 256 MB**。实测中该值随借还在 256 / 320 / 384 / 448 … 之间移动，每借出一个 granule 抬高 64 MB。
 
-#### 1.3.4 控制与保护参数
+#### 1.3.4 借来的内存走哪条路径：与动态内存配额的关系
+
+这一节回答一个关键疑问：**动态内存上限固定在 2134 MB 且不随借出变化，那么"借共享池"到底能不能给 AP 增加可用内存？**
+
+**结论：能。借来的 granule 内存不占用动态内存配额，走的是另一条通道。**
+
+依据一，`max_dynamic_memory` 确实固定不变：
+
+```c
+// memprot.cpp:978，由 ipci.cpp:240 在共享内存初始化时调用一次，运行时不再改变
+maxChunksPerProcess = ((unsigned int)avail_mem >> BITS_IN_KB) - reserved_mem;
+```
+
+AMM 未调用任何 memprot 接口去调整它。
+
+依据二，有授信时排序改用 AMM 专属内存上下文：
+
+```c
+// tuplesort.cpp:974
+if (amm_grant_id > 0) {
+    sortcontext  = AmmGranuleContextCreate(CurrentMemoryContext, "TupleSort main", amm_grant_id, context_bytes);
+    tuplecontext = AmmGranuleContextCreate(sortcontext, "Caller tuples", amm_grant_id, context_bytes);
+} else {
+    sortcontext  = AllocSetContextCreate(...);   // 普通路径，计入动态内存配额
+}
+```
+
+依据三，该上下文的分配直接取自 granule：
+
+```c
+// ammgranule.cpp:389
+chunk = (AmmGranuleChunk)GsAmmGrantAllocMemory(context->grant_token, total_size);
+```
+
+granule 属共享内存段，**不计入 `maxChunksPerProcess`**。
+
+因此两条路径并存：
+
+| 情形 | 内存来源 | 是否占用 2134 MB 动态配额 |
+|---|---|---|
+| 有 AMM 授信 | granule（共享内存段） | **否** |
+| 无授信（回退）或 AMM 关闭 | 普通 `AllocSet` | **是** |
+
+**但通道虽通，闸门另有其人。** 排序实际能用多少，被两处逻辑限制为"只减不增"：
+
+```c
+// tuplesort.cpp:963  创建排序时
+if (amm_grant_kb > 0)
+    workMem = Min(workMem, (int64)amm_grant_kb);      // 只取小值
+
+// tuplesort.cpp:574  运行中每次检查内存
+if (grant_bytes >= state->allowedMem)
+    return;                                           // 授信 ≥ 现额度 → 不做任何调整
+state->allowedMem = grant_bytes;                      // 只会往下压
+```
+
+**AMM 从不把 `work_mem` 调高，只会把它压到授信额度。** 于是最终 AP 能用多少，完全取决于授信值本身。
+
+```
+通道：通的         granule 内存绕开动态配额，架构上支持"借来即可用"
+闸门：授信额度      决策树给多少就只能用多少，且只减不增
+```
+
+这一区分在解读结果时至关重要：**若观测到"共享池借出了但 AP 没用上"，成因不在动态内存配额，而在授信额度。** 具体数值见结果章节。
 
 | 参数 | 值 | 作用 |
 |---|---|---|
