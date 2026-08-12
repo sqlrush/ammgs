@@ -563,3 +563,350 @@ AP 压力越大（step ③④），开启 AMM 时 TP 反而越快。合理解释
 - **受影响**：开启组分阶段 TPS 均值的估计精度低于关闭组，表 4.7 中各 step 的 TPS 差异应视为趋势而非精确值；operations 总量不受此影响
 
 本报告的达成判定均建立在不受影响的量上。
+
+---
+
+## 五、源码层面的原因分析
+
+第四章的五个未达成现象，在源码中都能找到确切成因。本章逐一对应。
+
+### 5.1 现象与根因对照
+
+| 第四章观察到的现象 | 根因 | 源码位置 |
+|---|---|---|
+| 申请 512 MB 实得授信 6 MB，排序落盘 | 授信由静态决策树给出，对本负载低估约 600 倍 | `workmem_dtree_model.cpp:149` |
+| 授信小则排序内存必然小 | AMM 对算子内存**只减不增** | `tuplesort.cpp:963` `:574` |
+| step② 越过动态内存但共享池零变动 | 借出触发条件是"空闲链表为空"，不是"需求超过供给" | `gs_amm.cpp:6424` |
+| 5→8→11 会话加压无效 | 需求信号是**单查询**的，不跨会话累加 | `gs_amm.cpp:6506` `:5980` |
+| 需求被判为"无需求" | 塌缩后单查询需求 4 MB ≤ `deadband_mb` 32 | `gs_amm.cpp:2924` |
+| AMM 只观测到 2 个活跃 AP（实际 5~11 个） | 回退路径不计入 `active_ap_count` | `gs_amm_query.cpp:780` vs `gs_amm.cpp:6555` |
+| step① 内存宽裕却借还振荡 | 自动控制器每拍传 `demand=0`，回收成唯一正分动作 | `gs_amm.cpp:5510` |
+| 借出后立即被收回 | 借要过 5 道闸，还只过 1 道，回收判据不检查 AP 是否仍需要 | `gs_amm.cpp:2914` vs `:2916` |
+| step④ 反压 48 次仅入队 1 次 | 冷却类拒绝走提前反压路径，到不了队列 | `gs_amm.cpp:2211` `:6553` |
+| step⑤ 共享池只回升 64 MB | AMM 不观测 `buffer_hit`；`TP_RECOVERY` 上限恒为 `max_mb` | `gs_amm.cpp:2902` |
+
+### 5.2 根因一：授信额度由静态决策树给出，对本负载低估约 600 倍
+
+AP 能拿到多少内存，由一棵**编译进二进制的静态决策树**决定（`src/common/backend/utils/mmgr/workmem_dtree_model.cpp`，文件头注明 `Auto-generated tree inference`，19 维特征）。
+
+本次负载命中的叶子：
+
+```c
+// workmem_dtree_model.cpp:149
+return 0.78155095881963832;      // 单位 MB
+```
+
+`0.78155095881963832 MB × 1024 = 800.3 kB`。向上取整后即为授信：
+
+```c
+// gs_amm_query.cpp:922
+prediction_mb = Max((gs_amm_native_bound_kb(calibrated_bounds_kb[0]) + 1023) / 1024, 1);
+```
+
+实测 `last_grant_mb = 6`，与该量级一致。
+
+**为什么落在这个叶子上——模型第一层有一处断崖：**
+
+```c
+// workmem_dtree_model.cpp:44 与 :420
+if (x[4] <= 5.8494858741760254)   /* max_plan_rows_log10 */
+```
+
+`10^5.8495 ≈ 70.7 万行`。两侧叶子值相差两个数量级：
+
+| 分支 | 条件 | 叶子数 | 值域 |
+|---|---|---|---|
+| **左** | ≲ 70.7 万行 | 29 | **0.115 – 7.63 MB**，其中 20 个低于 0.79 MB |
+| 右 | > 70.7 万行 | 25 | 8.28 – **300.67 MB** |
+
+本次排序 `EXPLAIN` 实测 `rows=449387`，`log10(449387) = 5.653 < 5.8495` → **落在左子树**。
+
+而该排序在原生模式下实测需要 **464 MB**（`quicksort Memory: 475082kB`）：
+
+```
+模型预测   0.78 MB
+实际需要   464 MB
+低估倍数   约 600 倍
+```
+
+**这不是负载被缩小造成的**——449387 行是用原生模式校准出的正确区间跑出的真实行数。
+
+**第三棵树已退化：** `predict_multi_pass_mb` 的 18 个叶子全部落在 **0.0196 – 0.0625 MB**，无论输入什么特征都返回 20~64 KB，不具备区分能力。
+
+### 5.3 根因二：AMM 对算子内存只减不增
+
+即使 `work_mem` 设为 512 MB，最终生效值也被授信压下去，且**只会往下压**：
+
+```c
+// tuplesort.cpp:963  创建排序时
+if (amm_grant_kb > 0)
+    workMem = Min(workMem, (int64)amm_grant_kb);      // 只取小值
+
+// tuplesort.cpp:574  运行中每次检查内存
+static void ApplyGsAmmEffectiveSortGrant(Tuplesortstate* state)
+{
+    ...
+    if (grant_bytes >= state->allowedMem)
+        return;                                       // 授信 ≥ 现额度 → 不做任何调整
+    state->allowedMem = grant_bytes;                   // 只会往下压
+}
+```
+
+**AMM 从不把 `work_mem` 调高。** 因此 §5.2 的低估会一比一传导为排序可用内存的减少，直接导致落盘。
+
+准入失败时更直接——改写会话 GUC：
+
+```c
+// gs_amm_query.cpp:780  gs_amm_begin_native_fallback()
+effective_work_mem_kb = Min(state->saved_work_mem_kb, Max(gs_amm_fallback_work_mem_kb, 1));
+set_config_option("work_mem", value, PGC_USERSET, PGC_S_SESSION, GUC_ACTION_SAVE, true, ERROR);
+```
+
+即 `SET work_mem='512MB'` 在 AMM 开启时不再是承诺，只是一个申请。
+
+### 5.4 根因三：借出的触发条件与需求信号
+
+这两处共同解释了 step②③④「加压无效」。
+
+**其一，借出触发条件是"空闲链表为空"，而非"需求超过供给"：**
+
+```c
+// gs_amm.cpp:6424
+if (free_granule_mb == 0 && block_reason[0] == '\0')
+    gs_amm_controller_step_internal(admission_demand_mb, tp_pressure, io_pressure, NULL, 0);
+```
+
+只要空闲链表里还剩 1 个 granule，**无论有多少 AP 在等内存，都不会触发借出**。第四章 step②③ 中 `free_gr` 长期为 1~2，正对应此处。
+
+**其二，需求信号是单查询的，不跨会话累加：**
+
+```c
+// gs_amm.cpp:6506  准入路径传的是本查询自己的需求
+gs_amm_prepare_admission_granules(Max(prediction_mb, (cache_bound_kb + 1023) / 1024));
+
+// gs_amm.cpp:6415  再抬到最小授信
+admission_demand_mb = Max(admission_demand_mb, gs_amm_ap_min_grant_mb);   // = 4
+
+// gs_amm.cpp:5980  控制器状态直接取该单值，全代码无任何累加
+obs.ap_demand_mb    = effective_ap_demand_mb;
+state0.ap_demand_mb = obs.ap_demand_mb;
+```
+
+**11 个各要 512 MB 的会话不会合成一个 5632 MB 的需求**，控制器每次只看到其中一个查询的需求。这就是为什么会话数从 5 提到 11，借出深度毫无变化。
+
+**其三，塌缩后的需求低于死区，被判为"无需求"：**
+
+```c
+// gs_amm.cpp:2924
+if (state->ap_demand_mb <= cfg->deadband_mb)
+    return "no_demand";                               // deadband_mb = 32
+```
+
+授信塌缩后单查询需求 `max(1, ap_min_grant_mb=4) = 4 MB ≤ 32 MB`，`BORROW` 被判为非法。
+
+### 5.5 根因四：为什么 AMM 只观测到 2 个活跃 AP
+
+第四章 step②~④ 中，实际启动 5~11 个 AP 会话，但 `active_ap_count` 峰值始终是 2。
+
+原因是**只有授信成功的会话才被计入**：
+
+```c
+// gs_amm.cpp:6555  授信成功路径
+if (grant_kb > 0) {
+    state->dynamic_used_mb += grant_mb;
+    state->active_ap_count++;                         // ← 仅此处递增
+    ...
+}
+```
+
+而走回退路径的会话不计入：
+
+```c
+// gs_amm_query.cpp:780  gs_amm_begin_native_fallback()
+state->active = true;
+state->fallback = true;
+state->selected_grant_mode = GS_AMM_NATIVE_GRANT_MODE_NONE;   // 无 grant，不计数
+```
+
+**即：拿不到授信的 AP 会话，在 AMM 的账本里等于不存在。** 它们既不算"已满足的需求"，也不算"待满足的需求"，直接从需求侧消失——这进一步加剧了 §5.4 的需求低估。
+
+### 5.6 根因五：自动控制器恒传 demand=0，借与还判据不对称
+
+这解释了 step① 中「内存宽裕却反复借还」的振荡。
+
+**自动控制器每拍都把需求写死为 0：**
+
+```c
+// gs_amm.cpp:5479  gs_amm_autorun_controller_from_metrics()
+active_ap_count = state->active_ap_count;      // 读了
+dynamic_used_mb = state->dynamic_used_mb;      // 读了
+ap_queue_len    = state->ap_queue_len;         // 读了
+if (!tp_guard_hot && !io_guard_hot && active_ap_count == 0 && dynamic_used_mb == 0 &&
+    ap_queue_len == 0 && reclaiming_granules == 0) {
+    SpinLockRelease(&state->mutex); return;     // ← 三个信号只当「要不要跑这一拍」的门闩
+}
+state->auto_controller_step_count++;
+SpinLockRelease(&state->mutex);
+
+gs_amm_controller_step_internal(0, tp_pressure, io_pressure, NULL, 0);   // ← 需求硬编码 0
+```
+
+三个需求信号被读取后，仅用于判断是否执行本拍，**跑起来后需求一律传 0**。
+
+**而借与还的合法性判据严重不对称：**
+
+```c
+// gs_amm.cpp:2914  还 —— 1 道闸
+if (action == GS_AMM_TP_RECOVERY)
+    return state->active_mb < state->max_mb ? "" : "at_max";
+
+// gs_amm.cpp:2916  借 —— 5 道闸
+if (action == GS_AMM_BORROW_FROM_BUFFER) {
+    if (state->tp_pressure >= cfg->tp_pressure_guard) return "tp_pressure_guard";
+    if (state->io_pressure >= cfg->io_pressure_guard) return "io_pressure_guard";
+    if (!state->tail_reclaimable)                     return "tail_not_reclaimable";
+    if (state->ap_demand_mb <= cfg->deadband_mb)      return "no_demand";
+    if (state->active_mb - state->min_mb <= 0)        return "shared_buffers_min";
+    return "";
+}
+```
+
+**回收的合法性判据里，没有任何一项检查「AP 是否还需要这块内存」**，唯一条件是"还没回到上限"。
+
+叠加评分——回收收益 `recovered × tp_pressure/100 × 1.2`，而 `OBSERVE` 恒为 0 分。混合负载下 `drop_ratio > 0` 几乎恒成立，因此：**只要 BORROW 因 `demand=0` 被判非法，回收就是唯一正分动作，每一拍都会执行。**
+
+这正是 step① 观察到的形态：借出 1 个 granule → 下一拍自动控制器传 0 → 回收 → 再借 → 再收。
+
+### 5.7 根因六：队列不是准入失败的通用路径
+
+step④ 反压 48 次仅入队 1 次，源码中只有一条分支能进队列：
+
+```c
+// gs_amm.cpp:6553
+if (grant_kb > 0) {
+    ... admitted = true;                                          // 正常授予
+} else if (queue_timeout_ms > 0 && gs_amm_queue_register_locked(state, &queue_ticket)) {
+    gs_amm_set_backpressure_reason_locked(state, "capacity");     // ← 唯一入队分支
+    queued = true;
+} else {
+    state->ap_queue_timeout_count++;
+    gs_amm_set_backpressure_reason_locked(state, guard_fast_block ? block_reason : "capacity");
+    backpressure = true;                                          // ← 直接反压，回退 fallback
+}
+```
+
+而 `gs_amm_new_ap_block_reason_locked` 返回的 7 种原因中，多数走 `GsAmmEvaluateAdmission` 的提前反压路径，**根本到不了队列代码**：
+
+```c
+// gs_amm.cpp:2211
+if (state->tp_generation_exhausted)          return "telemetry_generation_exhausted";
+if (state->cooldown_until > now)             return "resize_cooldown";      // ← 不入队
+if (gs_amm_tp_drop_guard_hot_locked(state))  return "tps_guard";            // ← 不入队
+if (gs_amm_io_guard_hot_locked(state))       return "io_pressure";          // ← 不入队
+if (gs_amm_recovery_cooldown_hot_locked(...)) return "recovery_cooldown";   // ← 不入队
+...
+```
+
+第四章实测的反压原因构成正好印证：
+
+```
+capacity            164     ← 唯一会入队的分支
+resize_cooldown      88     ← 冷却窗口，不入队
+recovery_cooldown    80     ← 冷却窗口，不入队
+```
+
+**168 / 332 = 51% 的反压因冷却窗口被直接拒绝。**
+
+此外 `gs_amm_admission_failure_policy` 只有两个取值，**没有 `queue`**：
+
+```c
+{"fallback", GS_AMM_ADMISSION_FALLBACK, false},
+{"error",    GS_AMM_ADMISSION_ERROR,    false},
+```
+
+即排队不是准入失败的通用策略，只有"确实没有容量"才入队；因冷却被拒的请求直接回退到 `fallback_work_mem_kb`。这与 step④ 期望的"新慢 SQL 进入反压队列"存在语义差异。
+
+### 5.8 根因七：AMM 感知不到 buffer_hit，也感知不到进程内存
+
+**其一，全代码零处引用 `buffer_hit`：**
+
+```
+grep -niE "blks_hit|buffer_hit|hit_ratio|hit_rate|cache_hit" gs_amm.cpp  →  0 处匹配
+```
+
+AMM 的全部输入信号是 `shared_buffer_physical_read_count`、`ap_temp_spill_bytes`、`tp_baseline_tps` / `tp_recent_tps`。物理读率只进入 `io_pressure`，而 `io_pressure` 的唯一作用是**阻止借出**——命中率下降会让它更不敢借，方向相反。
+
+**其二，共享池没有"扩张"这个动作。** 唯一能增大 `active_mb` 的是 `TP_RECOVERY`，其步长上限恒为 `max_mb`：
+
+```c
+// gs_amm.cpp:2902
+if (action == GS_AMM_TP_RECOVERY) {
+    int available = Max(state->max_mb - state->active_mb, 0);   // 天花板 = 启动时的 shared_buffers
+    return Max(Min(available, Max(cfg->resize_rate_limit_mb, granule_mb)), 0);
+}
+```
+
+**"回补共享池"在实现中只有"把先前借走的还回来"一个含义**，不存在超过初始 `shared_buffers` 的可能。step⑤ 只回升 64 MB，是因为此前本就只借出了这么多。
+
+**其三，AMM 不读 `max_process_memory`，也不识别 cgroup。** 它的内存感知只来自 `/proc/meminfo`：
+
+```c
+// gs_amm_query.cpp:631
+static void gs_amm_collect_system_memory(MemTuneWorkMemFeatures &features)
+{
+    FILE *file = AllocateFile("/proc/meminfo", "r");
+    ...  MemTotal / MemAvailable  ...
+}
+```
+
+本环境 VM 有 32 GiB 内存，在 AMM 眼里内存永远充裕——**它对数据库自身的动态内存是否吃紧毫无感知**。
+
+### 5.9 自我强化闭环
+
+上述根因不是彼此独立的，它们构成一个闭环：
+
+```
+① 决策树给出 0.78 MB 授信（低估 600 倍）
+        ↓
+② AMM 只减不增，排序实际可用内存被压到 6 MB
+        ↓
+③ 单查询需求 = max(1, ap_min_grant_mb=4) = 4 MB
+        ↓
+④ 4 MB ≤ deadband_mb(32) → BORROW 判非法「no_demand」
+        ↓
+⑤ 不借 → 空闲链表非空 → 连借出的触发条件也不满足
+        ↓
+⑥ 拿不到授信的会话走回退路径，不计入 active_ap_count
+        ↓
+   需求在账本上进一步消失 → 回到 ①
+```
+
+**AMM 既是发放额度的，又是量测需求的，还是判断需求够不够的。** 它在需求成形之前就把需求压了下去，然后据此判定"没有需求"。
+
+这解释了为什么**提高压力无效**：加大并发只增加查询条数，而所有门槛卡的都是**单查询需求量**。第四章中会话数从 5 提到 11，借出深度始终为 0，正是这个闭环的直接后果。
+
+### 5.10 小结
+
+| 层次 | 问题 | 影响的 step |
+|---|---|---|
+| **模型层** | 决策树对本类排序低估约 600 倍；第三棵树已退化 | 全部 |
+| **执行层** | AMM 对算子内存只减不增；准入失败改写会话 `work_mem` | 全部 |
+| **控制层** | 借出触发条件是空闲链表为空；需求不跨会话累加；死区 32 MB | ②③④ |
+| **调度层** | 自动控制器恒传 `demand=0`；借 5 闸 / 还 1 闸不对称 | ① |
+| **准入层** | 队列非通用路径，冷却类拒绝直接回退 | ④ |
+| **感知层** | 不观测 `buffer_hit`，不读 `max_process_memory`，只看 `/proc/meminfo` | ⑤ |
+
+**最上游、影响面最大的是模型层**：若授信正常，②③ 两档的借出与地板行为有机会成立。但 ④（队列）与 ⑤（回补）的问题独立于授信，属于准入分支设计与感知信号缺失，需单独处理。
+
+---
+
+## 六、测试边界声明
+
+本次工作为第三方测试评估。**未修改任何被测代码。**
+
+变更仅两项，均为配置：
+
+1. `max_process_memory` 由 4 GB 调整为 7424 MB，使 openGauss 内存保护得以初始化（`enable_memory_limit` 生效）。两组同等适用。
+2. `gs_amm_native_auto_mode` 在两组间切换（on / off），即本次唯一变量。脚本以 `trap ... EXIT` 保证异常退出时复原为 `on`。
+
+报告中列出的缺陷是**评估对象**，不是待办工单。本次测试不实施任何修复。
