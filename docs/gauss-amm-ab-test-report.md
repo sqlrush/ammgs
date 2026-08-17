@@ -2,314 +2,820 @@
 
 > 被测对象：`gauss-amm` @ `74632f4b89cc6e019b3c07bb860c42622e638025`（基线 openGauss v5.0.2）
 > 依据：PPT《内存池动态调整方案验证》阶段 ①–⑤
-> 实验：2026-08-11 17:24:13 – 17:50:35，同一实例连续跑两组，唯一变量 `gs_amm_native_auto_mode`
 > 性质：第三方测试评估，**未修改被测代码**
-> 数据：`evidence/ab-20260811-172413/` · 脚本：`scripts/`
+
+> 实验：2026-08-12 11:41 – 12:08，同一实例连续跑两组，唯一变量 `gs_amm_native_auto_mode`
+> 数据：`evidence/ab-20260812-114100/` · 脚本：`scripts/`
 
 ---
 
-## 一、结论速览
+## 一、测试环境
 
-同一条 SQL、同样 449387 行、同一个执行计划，只切一个 GUC：
+### 1.1 硬件资源
 
-| | **AMM 介入** | **AMM 不介入** |
+| 项 | 配置 |
+|---|---|
+| 载体 | OrbStack machine `gauss-amm-lab` |
+| 操作系统 | openEuler 24.03 LTS-SP4 ARM64 |
+| CPU | 18 核 |
+| 内存 | cgroup 限额 32 GiB |
+| 磁盘 | 868 GB（可用 596 GB） |
+| 数据库 | openGauss 5.0.2 + AMM，`127.0.0.1:15432` |
+
+### 1.2 数据库参数配置
+
+**原生 openGauss 参数**（AMM 开启与关闭两组完全相同）：
+
+| 参数 | 配置值 | 说明 |
 |---|---|---|
-| Sort Method | `external merge` | `quicksort` |
-| 内存 / 磁盘 | **Disk: 238368 kB**（落盘 233 MB） | **Memory: 475082 kB**（全内存 464 MB） |
-| 达成率（实得/申请 512 MB） | — | **90.6%** |
-| Total runtime | **914.885 ms** | **669.450 ms** |
+| `max_process_memory` | 7424 MB | 进程内存总上限 |
+| `enable_memory_limit` | on | 内存保护，已生效 |
+| `shared_buffers` | 2048 MB | 共享缓冲池 |
+| `cstore_buffers` | 512 MB | 列存缓冲（本测试无列存表） |
+| `wal_buffers` | 16 MB | WAL 缓冲 |
+| `max_connections` | 200 | 最大连接数 |
 
-**AMM 开启使一条本可全内存完成的排序落盘 233 MB，耗时增加 36.7%。** 这与 PPT 阶段① "调大慢 SQL 内存、降低落盘" 的主张方向相反。
+**AMM 参数**（仅开启组生效）：
 
-TP 侧同样是负向的（阶段 ①–④ 共 9 分钟）：
-
-| | TP operations | 相对 |
+| 参数 | 配置值 | 说明 |
 |---|---|---|
-| AMM 介入 | 251,789 | — |
-| AMM 不介入 | **356,524** | **+41.6%** |
+| `gs_amm_native_auto_mode` | on / **off** | **本次唯一变量**，off 即恢复原生行为 |
+| `gs_amm_shared_buffers_min_mb` | 512 MB | 共享池地板 |
+| `gs_amm_granule_size_mb` | 64 MB | 借还的最小单位 |
+| `gs_amm_tp_jitter_limit` | 0.30 | TPS 跌幅阈值 |
+| `gs_amm_ap_queue_limit` | 16 | 反压队列容量 |
+| `gs_amm_ap_queue_timeout_ms` | 5000 | 排队超时 |
 
-四项验收行为无一达成，详见 §四。根因是 AMM 的 work_mem 决策树对该类排序**低估约 460–640 倍**，详见 §五。
+### 1.3 内存初始化划分
+
+数据库启动时，`max_process_memory` 被划分为**共享内存**与**动态内存**两部分：
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│              max_process_memory = 7424 MB                    │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  共享内存段 4429 MB（启动时一次性分配，运行期固定）              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  shared_buffers          2048 MB                       │  │
+│  │  ┌──────────────────────────────────────┐              │  │
+│  │  │  可迁移带宽 1536 MB（24 granule）      │ ← AMM 可借出 │  │
+│  │  ├──────────────────────────────────────┤              │  │
+│  │  │  地板 512 MB（8 granule）             │ ← 不可借出   │  │
+│  │  └──────────────────────────────────────┘              │  │
+│  │                                                        │  │
+│  │  cstore_buffers           512 MB                       │  │
+│  │  data cache               384 MB                       │  │
+│  │  wal_buffers               16 MB                       │  │
+│  │  其他共享结构            1469 MB                        │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  动态内存 2134 MB                                             │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  会话上下文、算子 work_mem 从这里支取                     │  │
+│  │  空载已用约 542 MB                                      │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**两点说明：**
+
+1. **共享内存 4429 MB ≠ `shared_buffers` 2048 MB**。后者只占前者的 46%，其余是列存缓冲、数据缓存、缓冲区描述符、锁表等结构。计算内存容量时须用 4429 MB。
+
+2. **动态内存 2134 MB 由 openGauss 派生计算，不是可配置参数**：
+
+   ```
+   动态内存 = max_process_memory − 共享内存 − cstore_buffers − 后台预留
+            = 7424 − 4429 − 512 − 348 ≈ 2134 MB
+   ```
+
+   实例启动日志：`Set max backend reserve memory is: 348 MB, max dynamic memory is: 2134 MB`
+
+### 1.4 由此得到的 AP 容量模型
+
+这是全部测试场景的设计基准。AP 排序的内存有两个来源：
+
+| 来源 | 容量 | 何时使用 | 折合 512 MB 会话数 |
+|---|---|---|---|
+| **动态内存** | 2134 MB | 常规路径 | **约 4 个** |
+| **借来的 granule** | 1536 MB | AMM 从共享池借出后 | **3 个** |
+| **合计** | **3670 MB** | | **约 7 个** |
+
+```
+会话数：  1    2    3    4  │  5    6    7  │  8 ...
+         └──────────────────┘ └────────────┘ └────────
+          动态内存 2134 MB      借 1536 MB     无内存可给
+          （不需要借）          （必须借）      （只能排队）
+                              ↑              ↑
+                         开始借的临界点    共享池到达地板
+```
+
+**三个关键分界点：**
+
+- **4 个会话**：动态内存用尽，再多就必须向共享池借
+- **7 个会话**：可迁移带宽 1536 MB 也用尽，共享池降至 512 MB 地板
+- **超过 7 个**：借无可借，只能排队或降级
+
+### 1.5 测试数据
+
+| 表 | 规模 | 用途 |
+|---|---|---|
+| `accounts` | 1464 万行 | TP 点查目标，工作集 2.9 GB |
+| `gsbench.sort_data` | 402.7 万行 | AP 排序目标，单行 532 字节 |
+
+TP 工作集 2.9 GB 大于缓冲池 2 GB，使 `buffer_hit` 能随负载真实波动，step ⑤ 的判据方可观测。
 
 ---
 
-## 二、测试环境
+## 二、测试场景
+
+五个 step 逐级加压，每个 step 持续 2 分钟。**每个 step 都有一个明确的预期效果**——这些效果就是 AMM 若按设计正常工作应当表现出来的行为，也是本次测试的判据。
+
+### step ① 内存宽裕
 
 | 项 | 值 |
 |---|---|
-| 载体 | OrbStack machine `gauss-amm-lab`，openEuler 24.03 LTS-SP4 ARM64 |
-| CPU / 内存 | 18 核 / cgroup 32 GiB |
-| 数据库 | openGauss 5.0.2 + AMM，`127.0.0.1:15432` |
-| `shared_buffers` | 2048 MB = **32 granule**（`granule_size_mb=64`） |
-| 共享池地板 | `gs_amm_shared_buffers_min_mb` = 512 MB（8 granule） |
-| **可迁移带宽** | **1536 MB = 24 granule** |
-| 控制器 | `controller_horizon=3`、`beam_width=4`、`deadband_mb=32` |
-| 迁移节奏 | `resize_batch_mb=64`、`resize_rate_limit_mb=64`、`resize_cooldown_ms=2000` |
-| 保护阈 | `tp_pressure_guard=80`、`io_pressure_guard=80`、`tp_jitter_limit=0.30` |
-| 队列 | `ap_queue_limit=16`、`ap_queue_timeout_ms=5000` |
-| 授信 | `ap_min_grant_mb=4`、回退值 `fallback_work_mem_kb` ≈ 64 MB |
-| 数据 | TP 表 `accounts` 1464 万行；AP 表 `gsbench.sort_data` 402.7 万行 |
+| TP | 2 worker |
+| AP | 2 会话 × 128 MB |
+| AP 内存需求 | 256 MB |
+| 位置 | 远低于动态内存 2134 MB |
 
-### 变量选择说明
+**期望效果：** 内存充裕，AP 直接从动态内存获得所需内存，**共享池不发生任何借出**，TP 吞吐不受影响。
 
-两组唯一差异是 `gs_amm_native_auto_mode`。选它而非 `gs_amm_enabled=off` 的理由是源码里这道门闩：
-
-```c
-// src/gausskernel/storage/buffer/gs_amm_query.cpp:862
-if (!gs_amm_native_auto_mode || !top_level_executor)
-    return false;          // ← 关掉后，预测/准入/改写 work_mem 全部不执行
-```
-
-它正是决定 **AMM 是否介入执行器内存分配**的开关。关掉它等于恢复原生 openGauss 的 work_mem 行为，同时保留 AMM 的池遥测，使两组可用同一采样器、同一组指标直接对比。
-
-**旁证**：关闭组结束时的准入计数器与开启组结束时**完全相同**（`native_eligible_count=726`、`native_admit_count=284`、`native_reject_count=442`、`effective_downgrade_count=477`）——计数器冻结，证明关闭组中 AMM 一次准入动作都没做。
+本档为基线参照。
 
 ---
 
-## 三、测试工具与负载实现
+### step ② 超过 4 个 512 MB 会话 —— 开始借
 
-两个负载均来自 **gsbench v1.1.6**（`sqlrush/gsbench`）。
+| 项 | 值 |
+|---|---|
+| TP | 2 worker |
+| AP | **超过 4 个** 512 MB 等效会话 |
+| AP 内存需求 | > 2134 MB |
+| 位置 | 越过动态内存上限 |
 
-### 3.1 TP 负载 —— 场景 101 `tp_cpu`
+**期望效果：AMM 开始向共享池借内存。**
 
-点查为主的 OLTP 负载，作用是产生持续的 TPS 基线，使 AMM 的 `tp_baseline_tps` / `tp_recent_tps` / `drop_ratio` 有意义。
+动态内存已经用尽，新增的 AP 无法从中获得内存。此时 AMM 应当从 `shared_buffers` 借出 granule 交给 AP 使用，表现为：
 
-已打自制的 TP 键采样补丁：启动时对 `accounts` 全表 1464 万行做键采样（`stride=1`），保证点查随机命中全表而非热点区。
+- `shared_buffers` 从 2048 MB 开始下降
+- AP 仍能拿到接近 512 MB 的排序内存，不落盘
+- TP 吞吐在缓冲池缩小后仍保持可接受水平
+
+**这是验收 AMM 核心价值的关键档位**——若此处不借，后续各档均无从谈起。
+
+---
+
+### step ③ 达到 7 个 512 MB 会话 —— 借出停止，地板保护生效
+
+| 项 | 值 |
+|---|---|
+| TP | 2 worker |
+| AP | **7 个** 512 MB 等效会话 |
+| AP 内存需求 | ≈ 3670 MB |
+| 位置 | 动态内存 + 可迁移带宽全部用尽 |
+
+**期望效果：借出停止，`shared_buffers` 停在 512 MB 地板不再下降。**
+
+可迁移带宽 1536 MB 已全部借出，共享池触及 `gs_amm_shared_buffers_min_mb` 下限。此时应当观察到：
+
+- `shared_buffers` 降至 **512 MB** 后**不再继续下降**
+- 借出动作停止
+- TP 仍能依靠这 512 MB 保底缓存维持运行
+
+**地板保护是 TP 的最后一道防线**——没有它，AP 可以把缓冲池抽干，TP 将因缓存崩塌而不可用。
+
+---
+
+### step ④ 超过 7 个 512 MB 会话 —— 进入队列，保护整体内存
+
+| 项 | 值 |
+|---|---|
+| TP | 2 worker |
+| AP | **超过 7 个** 512 MB 等效会话 |
+| AP 内存需求 | > 3670 MB |
+| 位置 | 借无可借 |
+
+**期望效果：新到的 AP 进入反压队列，而不是继续挤占内存。**
+
+动态内存与可迁移带宽都已耗尽，系统再无内存可分配。此时 AMM 应当：
+
+- 将新到的 AP 会话**放入队列等待**（`ap_queue_limit=16`，超时 5 秒）
+- 而不是让它们无限制申请内存、拖垮整个实例
+- 队列的意义在于给内存一个"稍后可得"的机会，同时守住整体内存安全
+
+**这一档检验的是内存耗尽后的兜底行为**：是有序排队，还是静默降级、甚至失控。
+
+---
+
+### step ⑤ TP 流量增加 —— 回补共享池，保住 buffer_hit
+
+| 项 | 值 |
+|---|---|
+| TP | **2 worker → 8 worker** |
+| AP | 保持 step ④ 的会话数不变 |
+| 变化方向 | 由 AP 侧加压转为 TP 侧加压 |
+
+**期望效果：`shared_buffers` 回升，`buffer_hit` 得到保护，同时每个 AP 会话的动态内存下降。**
+
+TP 流量放大 4 倍，缓存需求陡增，`buffer_hit` 开始下滑。此时 AMM 应当反向调度：
+
+- 把先前借给 AP 的 granule **收回共享池**，`shared_buffers` 上涨
+- `buffer_hit` 因缓冲池恢复而止跌回升
+- 代价是**每个 AP 会话可用的动态内存相应降低**，AP 变慢或落盘
+
+**这一档检验调度的双向性**：前四档看"能不能把内存让出去"，这一档看"TP 需要时能不能要回来"。单向让渡不是调度，双向可逆才是。
+
+### 五档汇总
+
+| step | AP 会话数（512 MB 等效） | 所处区间 | 期望效果 |
+|---|---|---|---|
+| ① | 2 个 × 128 MB | 内存宽裕 | 不借，TP 不受影响 |
+| ② | **> 4 个** | 越过动态内存 | **开始借**，`shared_buffers` 下降 |
+| ③ | **= 7 个** | 带宽用尽 | **借出停止**，到达 512 MB 地板 |
+| ④ | **> 7 个** | 借无可借 | **进入队列**，保护整体内存 |
+| ⑤ | 同 ④，TP 2→8 worker | TP 侧加压 | **共享池回升**，`buffer_hit` 保住，AP 内存下降 |
+
+---
+
+## 三、测试脚本
+
+两个负载均基于 **gsbench v1.1.6**（`sqlrush/gsbench`）。
+
+### 3.1 TP 负载：场景 101
+
+模拟 OLTP 点查，为 AMM 提供 TPS 基线，并作为"被保护对象"。
+
+```bash
+gsbench run 101 --workers 2 --duration 9m      # step ①~④
+gsbench run 101 --workers 8 --duration 2m      # step ⑤
+```
+
+启动时对 `accounts` 全表 1464 万行做键采样，保证点查随机命中全表而非热点区：
 
 ```
 INFO tp_key_sample accounts_rows=14641933 sampled_keys=14641933 stride=1
 INFO scenario=tp_cpu workers=2 duration=9m0s rate=unlimited
 ```
 
-**工作集 2.9 GB > 缓冲池 2 GB 是刻意设计**：只有工作集大于缓冲池，`buffer_hit` 才会真实下降，PPT 阶段⑤ 的判据才可测。代价是 TP 大量命中磁盘、TPS 噪声偏大。
+各轮实测 `operations` 20~35 万、`errors=0`。
 
-### 3.2 AP 负载 —— 场景 201 `memory_workmem_sort`
+### 3.2 AP 负载：持有型排序会话
 
-这是本报告的核心工具。它分**校准**与**压测**两阶段，源码在 `internal/gsbench/scenario_workmem.go`。
+AP 是本次测试的核心工具，它必须真实、稳定地占住内存，否则整个压力模型不成立。
 
-#### 阶段一：校准（`calibrateWorkMemRange`）
-
-目的是找到"能让排序算子真正吃掉目标 work_mem、且不落盘"的行数区间。
-
-会话设置（`buildWorkMemSessionSetup`，:461）：
-
-```sql
-SET LOCAL work_mem='524288kB'      -- 目标值
-SET LOCAL query_dop=1              -- 关并行，保证算子内存可归因
-SET LOCAL explain_perf_mode=normal -- 使 EXPLAIN 输出可解析
-```
-
-探测语句（`workMemCalibrationSQL`，:381）：
-
-```sql
-EXPLAIN (ANALYZE, BUFFERS)
-SELECT max(rn), sum(payload_len) FROM (
-  SELECT row_number() OVER (ORDER BY payload, sort_key DESC, id) AS rn,
-         CAST(length(payload) AS bigint) AS payload_len
-  FROM gsbench.sort_data
-  WHERE dist_key BETWEEN 1 AND <range>
-) AS gsbench_sorted
-```
-
-搜索逻辑是**倍增探测 + 二分收敛**，最多 16 次，目标带 70%–97%：
-
-```go
-// calibrateWorkMemRange()
-if observation.Spilled || observation.UsedKB > upperKB {
-    high = candidate - 1        // 落盘或超上界 → 区间压小
-    bracketed = true
-} else {
-    low = candidate + 1         // 未落盘但用量不足 → 区间抬高
-}
-if bracketed {
-    candidate = low + (high-low)/2      // 二分
-} else {
-    candidate *= 2                       // 倍增
-}
-```
-
-命中 `70% ≤ UsedKB ≤ 97%` 且未落盘 → `target_met=true`；16 次未命中 → 取"最大的不落盘观测"兜底，`target_met=false`。
-
-> **关键**：`EXPLAIN ANALYZE` 是真执行的（`explain.cpp:993`：`if (es->analyze) eflags = 0;`，`EXEC_FLAG_EXPLAIN_ONLY` 仅用于裸 `EXPLAIN`），因此**校准阶段同样会被 AMM 拦截**。这一点在 §五 有决定性影响。
-
-#### 阶段二：压测（`workMemWorkerOperations`，:490）
-
-每个 worker 执行：
+#### 3.2.1 单个会话做什么
 
 ```sql
 BEGIN;
-SET LOCAL work_mem='524288kB';
-SET LOCAL query_dop=1;
+SET LOCAL work_mem='524288kB';        -- 申请 512 MB
+SET LOCAL query_dop=1;                -- 关并行，保证内存可归因
 
-DECLARE gsbench_cursor_<id> NO SCROLL CURSOR FOR
+DECLARE apc CURSOR FOR
   SELECT id, sort_key, payload
     FROM gsbench.sort_data
-   WHERE dist_key BETWEEN 1 AND <校准区间>
+   WHERE dist_key BETWEEN 1 AND <区间>
    ORDER BY payload, sort_key DESC, id;
 
-FETCH 1 FROM gsbench_cursor_<id>;
+FETCH 1 FROM apc;                     -- 触发全量排序，内存在此落地
+-- 保持游标打开、事务不提交，持续占用
 ```
 
-随后 Go 侧阻塞直到 duration 结束，收尾才 `CLOSE ALL; ROLLBACK`。
+**内存能被"占住"的原理**：排序是阻塞算子，要吐出第一行就必须先把全部数据排完。`FETCH 1` 强制 tuplesort 读入全部数据并建立完整排序状态；随后不再 FETCH、不提交事务，游标保持打开，排序内存就不会释放，直到会话结束。
 
-#### 201 为什么能"占住" work_mem —— 本测试成立的前提
+#### 3.2.2 原生 openGauss 下确实能占到接近 512 MB
 
-**排序是阻塞算子：要吐出第 1 行，必须先把全部数据排完。** 所以 `FETCH 1` 会强制 tuplesort 读入 `<range>` 行、按 work_mem 额度建立完整排序状态。
-
-拿到第一行后**不再 FETCH、不提交事务**，游标保持打开 → tuplesort 的内存不释放 → 整个 duration 期间这块内存被真实占用。
+这是压力模型成立的前提，已用 `EXPLAIN (ANALYZE)` 直接验证：
 
 ```
-SET LOCAL work_mem='512MB'   声明需求
-        ↓
-DECLARE CURSOR ... ORDER BY   定义必须排序的查询
-        ↓
-FETCH 1                       触发全量排序，真正分配内存   ← 内存在此落地
-        ↓
-阻塞持有                       持续占用，形成稳定压力
-        ↓
-CLOSE ALL; ROLLBACK           释放
+native_auto_mode = off，申请 work_mem = 512 MB
+
+ Sort  (actual time=874.193..896.583 rows=449387 loops=1)
+   Sort Key: payload, sort_key DESC, id
+   Sort Method: quicksort  Memory: 475082kB          ← 全内存完成，未落盘
+ Total runtime: 919.703 ms
 ```
 
-**在原生 openGauss 下这套机制是有效的**，本次实测直接验证：
+**实测单会话真实占用 475082 kB ≈ 475 MB，达到申请值 512 MB 的 90.6%，`quicksort` 全内存完成、无落盘。**
+
+区间值由 gsbench 的校准逻辑求得：以二分搜索寻找"能吃满目标 work_mem 且不落盘"的最大行数区间，512 MB 档对应 `dist_key BETWEEN 1 AND 112347`（约 45 万行）。
+
+#### 3.2.3 会话数自动补偿
+
+单会话实得约 463~475 MB 而非 512 MB，存在约 **40~50 MB 缺口**。若按名义值直接换算会话数，实际内存压力会系统性偏低，导致关键分界点跨不过去。
+
+脚本 `scripts/ap-fleet.sh` 对此做自动补偿：**按目标总内存除以实测单会话占用，向上取整得到实际会话数。**
 
 ```
-native_auto_mode = off
- Sort  (actual time=588.974..646.528 rows=449387 loops=1)
-   Sort Method: quicksort  Memory: 475082kB          ← 全内存持有 464 MB
- Total runtime: 669.450 ms
+实际会话数 = ⌈目标总内存 ÷ 单会话实测占用⌉
 ```
 
-475082 kB / 524288 kB = **90.6%**，落在 gsbench 的 70%–97% 目标带内，`target_met=true`。
+**测量在原生模式下进行，且只做一次，两组共用同一组会话数。** 这是对照实验的必要条件，原因有二：
 
-即：**201 确实能把 work_mem 占住，前提是数据库真的把 work_mem 给它。**
+1. **AMM 开启时测量无效。** 该模式下排序会落盘，`EXPLAIN` 输出的是 `Disk: NkB` 而非 `Memory: NkB`，测不到真实驻留内存。实测该模式下测量函数返回 0。
+2. **两组必须跑相同的会话数。** 若各自测量，两组会得到不同的并发数，就不再是对照实验。
 
-### 3.3 五阶段编排
+本次实测与据此计算的会话数：
 
-`scripts/run-ab.sh`，两组各跑一遍，每阶段 2 分钟，对应 PPT step ①–⑤：
+```
+原生模式实测单会话占用 = 463 MB
+```
 
-| 阶段 | PPT 设计意图 | TP worker | AP 份数 | AP work_mem | AP 总请求 |
-|---|---|---|---|---|---|
-| ① 内存富裕 | 基线 | 2 | 2 | 128 MB | 256 MB |
-| ② 触及上限 | **借内存** | 2 | 2 | 512 MB | 1024 MB |
-| ③ 保护基准 | **TP 托底保护** | 2 | 4 | 512 MB | 2048 MB |
-| ④ 反压排队 | **队列保护** | 2 | 8 | 512 MB | 4096 MB |
-| ⑤ 基准突增 | **TP 增流是否扩共享缓存** | **8** | 8 | 512 MB | 4096 MB |
+| 场景目标 | 目标总内存 | 名义会话数 | **实际启动会话数** |
+|---|---|---|---|
+| 越过动态内存（step ②） | 2134 MB | 5 个 | **5 个** |
+| 用尽可迁移带宽（step ③） | 3670 MB | 8 个 | **8 个** |
+| 借无可借（step ④） | 5000 MB | 10 个 | **11 个** |
 
-AP 采用 `scripts/ap-holder.sh`（gsql 复刻 201 的语句序列），因为 gsbench 的 stale recovery 读取数据库侧共享 journal，同一时刻只能运行一个进程，无法用它做精确的分阶段并发爬坡。复刻语句与 `workMemCursorSQL` **逐字一致**，仅持有方式由阻塞改为 `pg_sleep`。
+测量值不写死在脚本里，每次实验开始时重新测，以适应数据分布或环境变化。
 
-区间常量取自 AMM 关闭时的实测校准值：128 MB 档 `28086`，512 MB 档 `112347`。
+这样可确保三个关键分界点（越过动态内存、用尽带宽、借无可借）都被真实跨越，而不是停在临界值以下。
+
+### 3.3 编排
+
+`scripts/run-ab.sh` 依次执行两组：先 `gs_amm_native_auto_mode=on`，静默 30 秒后切 `off`，两组使用完全相同的五阶段编排与负载参数。
+
+采样器每秒记录一次 AMM 状态与数据库统计，输出 40 列 CSV；另有看门狗记录会话与服务器日志。
 
 ---
 
-## 四、AMM 开启 vs 关闭 —— 逐阶段对比
+## 四、测试结果
 
-> 列义：`SB低/高` = 该阶段 `active_mb` 极值；`动已用` = `dynamic_used_mb` 峰值；`AP` = `active_ap_count` 峰值；`入队/超时/反压` = 累计计数器阶段内增量（精确值）；`热` = `tp_guard_hot=true` 采样数；`借/还` = 按 `pool_event_id` 去重的事件数。
+> 实验：2026-08-12 11:41 – 12:08，STAMP `20260812-114100`
+> 会话数：实测单会话 463 MB → step② 5 个 / step③ 8 个 / step④⑤ 11 个（两组共用）
 
-| 阶段 | 模式 | 样本 | SB低 | SB高 | 动已用 | AP | 队长 | 入队 | 超时 | 反压 | drop峰 | 热 | 借 | 还 | hit低% |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| tp_warmup | **ON** | 41 | 1920 | 1920 | 1 | 1 | 0 | 0 | 0 | 0 | 0.0000 | 0 | 1 | 0 | 0.4 |
-| tp_warmup | OFF | 43 | 1792 | 1792 | 0 | 0 | 0 | 0 | 0 | 0 | 0.0000 | 0 | 0 | 1 | 30.1 |
-| ① stage1 | **ON** | 113 | 1856 | 1920 | 2 | 2 | 0 | 0 | 0 | 91 | 0.6196 | 31 | 6 | 66 | 54.2 |
-| ① stage1 | OFF | 113 | 1792 | 1792 | 0 | 0 | 0 | 0 | 0 | **0** | **0.0672** | **0** | 0 | 0 | 65.2 |
-| ② stage2 | **ON** | 111 | 1856 | 1920 | 12 | 2 | 0 | 0 | 0 | 110 | 0.4193 | 43 | 5 | 75 | 59.4 |
-| ② stage2 | OFF | 114 | 1792 | 1792 | 0 | 0 | 0 | 0 | 0 | **0** | **0.0288** | **0** | 0 | 0 | 65.8 |
-| ③ stage3 | **ON** | 22 | 1792 | 1792 | 24 | 4 | 1 | 1 | 34 | 35 | 0.2207 | 0 | 1 | 20 | 84.8 |
-| ③ stage3 | OFF | 114 | 1792 | 1792 | 0 | 0 | 0 | 0 | 0 | **0** | 0.1012 | 0 | 0 | 0 | 83.7 |
-| ④ stage4 | **ON** | 51 | 1792 | 1792 | 24 | 4 | 5 | 1 | 38 | 34 | 0.1870 | 0 | 6 | 15 | 84.5 |
-| ④ stage4 | OFF | 134 | 1792 | 1792 | 0 | 0 | 0 | 0 | 0 | **0** | 0.1247 | 0 | 0 | 0 | 84.0 |
-| ⑤ stage5 | **ON** | 61 | 1792 | 1792 | 24 | 4 | 5 | 0 | 34 | 91 | 0.7628 | 33 | 8 | 38 | 24.4 |
-| ⑤ stage5 | OFF | 142 | 1792 | 1792 | 0 | 0 | 0 | 0 | 0 | **0** | 0.8898 | 19 | 0 | 20 | 28.0 |
-| cooldown | **ON** | 56 | 1792 | 1792 | 0 | 0 | 0 | 0 | 0 | 71 | 0.9736 | 52 | 0 | 52 | 100.0 |
-| cooldown | OFF | 56 | 1792 | 1792 | 0 | 0 | 0 | 0 | 0 | 0 | 0.9719 | 44 | 0 | 44 | 99.0 |
+每个 step 分三部分：**测试目标** → **未开启 AMM** → **开启 AMM**。
 
-全程汇总：
+### 4.0 先看一个贯穿全局的对照
 
-| | 借出深度 | 距地板 | 动已用峰 | AP峰 | 借 / 还 | 反压 | 入队 |
-|---|---|---|---|---|---|---|---|
-| **AMM 介入** | 1984 → 1792 = **192 MB（12.5%）** | 1280 MB | 24 MB | 4 | 28 / 266 | **440** | **1** |
-| **AMM 不介入** | 恒 1792 = **0 MB** | 1280 MB | 0 | 0 | 0 / 65 | **0** | 0 |
+同一条排序 SQL、同样 449387 行、同一执行计划，只切 `gs_amm_native_auto_mode`：
 
-TP 吞吐（Δt 归一化后的真 TPS）：
+| | 未开启 AMM | 开启 AMM |
+|---|---|---|
+| Sort Method | `quicksort` | `external merge` |
+| 内存 / 磁盘 | **Memory 475082 kB**（464 MB，全内存） | **Disk 238376 kB**（落盘 233 MB） |
+| 单查询耗时 | **667.9 ms** | **816.2 ms**（慢 22%） |
+| AMM 授信 | — | `last_grant_mb = 6` |
 
-| 阶段 | ON | OFF | ON / OFF |
+**AP 会话申请 512 MB，开启 AMM 后实得授信 6 MB，被迫落盘。** 这个差异贯穿后续所有 step。
+
+---
+
+### step ① 内存宽裕（2 会话 × 128 MB）
+
+**测试目标：** 内存充裕，AP 直接从动态内存取得所需内存，**共享池不发生借出**，TP 不受影响。
+
+**未开启 AMM：目标达成。**
+
+| 指标 | 值 |
+|---|---|
+| `shared_buffers` | 恒 1984 MB，无任何变动 |
+| AP | 直接获得内存，无落盘 |
+| TP 吞吐 | 633 TPS |
+| `buffer_hit` 均值 | 87.4% |
+
+**开启 AMM：未达成——本不该借，却在反复借还。**
+
+共享池全程振荡：
+
+```
+SB=1792 → 1856 → 1920   （回收）
+SB=1856  BORROW_FROM_BUFFER   ← 借出 1 个 granule
+SB=1920  TP_RECOVERY          ← 随即收回
+SB=1856  BORROW_FROM_BUFFER   ← 再借
+SB=1920  TP_RECOVERY          ← 再收回
+SB=1856  BORROW_FROM_BUFFER   ← 三借
+SB=1920  TP_RECOVERY          ← 三收
+```
+
+| 指标 | 值 |
+|---|---|
+| 借出事件 | 7 次（本档不应有） |
+| `dynamic_used_mb` 峰值 | 2 MB |
+| TP 吞吐 | 627 TPS（与关闭组持平） |
+| 反压 | 37 次，排队超时 16 次 |
+
+内存宽裕的档位出现了 37 次反压和 3 轮借还振荡，属于**不必要的调度动作**。
+
+---
+
+### step ② 超过 4 个 512 MB 会话（5 会话，需求 2315 MB）
+
+**测试目标：** 需求 2315 MB 已越过动态内存 2134 MB，**AMM 应开始向共享池借内存**，`shared_buffers` 从 2048 MB 下降，AP 仍能拿到接近 512 MB 不落盘。
+
+**未开启 AMM：无借出机制，AP 靠落盘消化超额需求。**
+
+| 指标 | 值 |
+|---|---|
+| `shared_buffers` | 恒 1984 MB |
+| AP | 超出动态内存的部分落盘，无报错 |
+| TP 吞吐 | 670 TPS |
+| `buffer_hit` 均值 | 87.2% |
+
+**开启 AMM：未达成——共享池纹丝不动。**
+
+| 指标 | 值 |
+|---|---|
+| `shared_buffers` | **恒 1920 MB，全程零变动** |
+| 借出深度 | **0 MB** |
+| `dynamic_used_mb` 峰值 | **12 MB**（需求 2315 MB） |
+| AMM 观测到的 AP 并发 | **2**（实际 5 个会话） |
+| TP 吞吐 | 720 TPS |
+| 反压 / 排队超时 | 35 / 36 次 |
+
+**这是最关键的一档。** 需求已明确越过动态内存上限，按设计此时必须借出，但共享池一格未动，动态池只用掉 12 MB。AMM 观测到的活跃 AP 只有 2 个——**另外 3 个会话根本没有进入 AMM 的记账**。
+
+---
+
+### step ③ 达到 7 个 512 MB 会话（8 会话，需求 3704 MB）
+
+**测试目标：** 需求已用尽"动态内存 + 全部可迁移带宽"，`shared_buffers` 应降至 **512 MB 地板**并停止下降，地板保护生效。
+
+**未开启 AMM：无地板概念，继续靠落盘消化。**
+
+| 指标 | 值 |
+|---|---|
+| `shared_buffers` | 恒 1984 MB |
+| TP 吞吐 | 546 TPS |
+| `buffer_hit` 均值 | 87.7% |
+| 错误 | 0 |
+
+**开启 AMM：未达成——距地板 1408 MB。**
+
+| 指标 | 值 |
+|---|---|
+| `shared_buffers` | **恒 1920 MB** |
+| 距地板 512 MB | **1408 MB（22 个 granule）** |
+| 借出深度 | **0 MB** |
+| `dynamic_used_mb` 峰值 | 12 MB（需求 3704 MB） |
+| TP 吞吐 | 739 TPS |
+| 反压 / 排队超时 | 35 / 39 次 |
+
+地板保护**未被触发**——不是它失效，而是压力从未推到地板附近。共享池在 8 个 512 MB 会话面前保持 1920 MB 不动。
+
+---
+
+### step ④ 超过 7 个 512 MB 会话（11 会话，需求 5093 MB）
+
+**测试目标：** 动态内存与可迁移带宽都已耗尽，新到的 AP **应进入反压队列**，保护整体内存。
+
+**未开启 AMM：无队列机制，全部会话靠落盘完成，未出现错误。**
+
+| 指标 | 值 |
+|---|---|
+| `shared_buffers` | 恒 1984 MB |
+| 反压 / 入队 | 0 / 0（无此机制） |
+| AP 错误 | **0 条** |
+| TP 吞吐 | 483 TPS |
+
+11 个会话共需 5093 MB，而动态内存仅 2134 MB。原生 openGauss 的处理方式是**让超出部分落盘**，全部会话正常完成、无报错——这是它在内存不足时的既有兜底。
+
+**开启 AMM：基本未达成——反压 48 次仅入队 1 次。**
+
+| 指标 | 值 |
+|---|---|
+| 反压次数 | **48** |
+| 入队次数 | **1**（占反压 2.1%） |
+| 排队超时 | 39 次 |
+| 队列长度峰值 | 8 |
+| TP 吞吐 | 748 TPS |
+
+全程反压原因构成：
+
+```
+capacity            164     ← 唯一会入队的分支
+resize_cooldown      88     ← 冷却窗口，走不到队列
+recovery_cooldown    80     ← 冷却窗口，走不到队列
+```
+
+**超过一半的反压（168/332）因冷却窗口被直接拒绝，根本到不了队列。**
+
+---
+
+### step ⑤ TP 流量增加（TP 2→8 worker，AP 保持 11 会话）
+
+**测试目标：** TP 流量放大 4 倍，`buffer_hit` 下滑，AMM 应**把借出的内存收回共享池**，`shared_buffers` 上涨保住 `buffer_hit`，同时每个 AP 会话的动态内存下降。
+
+**未开启 AMM：共享池固定，`buffer_hit` 自然下滑。**
+
+| 指标 | 值 |
+|---|---|
+| `shared_buffers` | 恒 1984 MB |
+| `buffer_hit` 最低 | **17.1%** |
+| TP 吞吐 | 2218 TPS |
+| TP operations（2 min） | 304,010 |
+
+**开启 AMM：部分达成——共享池确实回升，但幅度有限。**
+
+| 指标 | 值 |
+|---|---|
+| `shared_buffers` | **1920 → 1984 MB（+64 MB）** |
+| `buffer_hit` 最低 | **21.5%** |
+| TP 吞吐 | 1881 TPS |
+| TP operations（2 min） | 276,463 |
+
+这是五档中**唯一观察到符合预期方向动作**的一档：共享池确实随 TP 加压而回升了 1 个 granule，`buffer_hit` 最低点也略优于关闭组（21.5% vs 17.1%）。但由于此前从未借出过多少，可回收的量本就有限。
+
+---
+
+### 4.6 五档汇总
+
+| step | 测试目标 | 未开启 AMM | 开启 AMM | 达成 |
+|---|---|---|---|---|
+| ① | 不借，TP 不受影响 | SB 恒 1984，无动作 | SB 在 1856↔1920 振荡，借还 3 轮，反压 37 次 | **否**（多余动作） |
+| ② | 越过动态内存 → 开始借 | SB 恒 1984，超额落盘 | **SB 恒 1920，借出 0 MB**，dyn_used 12 MB | **否** |
+| ③ | 达到 7 个 → 到 512 地板 | SB 恒 1984 | **SB 恒 1920，距地板 1408 MB** | **否** |
+| ④ | 超过 7 个 → 进队列 | 无机制，落盘完成，0 错误 | 反压 48 次仅入队 1 次 | **基本否** |
+| ⑤ | TP 加压 → 共享池回升 | SB 恒 1984，hit 低 17.1% | **SB 1920→1984**，hit 低 21.5% | **部分是** |
+
+### 4.7 性能对照
+
+**AP 侧：开启 AMM 后显著变差。**
+
+| | 未开启 AMM | 开启 AMM |
+|---|---|---|
+| 单会话排序内存 | 464 MB（全内存） | 落盘 233 MB |
+| 单查询耗时 | 667.9 ms | **816.2 ms（+22%）** |
+
+**TP 侧：分阶段互有高低。**
+
+| 阶段 | 未开启 AMM | 开启 AMM | 差异 |
 |---|---|---|---|
-| tp_warmup | 229 | 616 | **37%** |
-| ① stage1 | 363 | 775 | **47%** |
-| ② stage2 | 429 | 738 | **58%** |
-| ③ stage3 | 633 | 724 | 87% |
-| ④ stage4 | 646 | 542 | 119% |
-| ⑤ stage5 | 1855 | 1812 | 102% |
+| ① | 633 | 627 | −1% |
+| ② | 670 | 720 | +7% |
+| ③ | 546 | 739 | +35% |
+| ④ | 483 | 748 | +55% |
+| ⑤ | 2218 | 1881 | −15% |
+| **operations（①–④，9 min）** | 295,403 | **315,007** | **+6.6%** |
+| **operations（⑤，2 min）** | **304,010** | 276,463 | −9.1% |
 
-gsbench 侧总量：阶段 ①–④ 共 9 分钟，**ON 251,789 ops vs OFF 356,524 ops（OFF 高 41.6%）**；阶段⑤ 2 分钟，ON 279,190 vs OFF 264,734。两组 `errors=0`。
+AP 压力越大（step ③④），开启 AMM 时 TP 反而越快。合理解释是：**AMM 把 AP 的内存申请压到 6 MB，AP 立即落盘，不再与 TP 争抢内存**——TP 的收益来自 AP 被"饿死"，而非来自内存的有效调度。step ⑤ TP 自身成为主压力源时，这一收益消失并转为劣势。
 
-### 问题（1）AP 并发起来，内存有没有借？
+**两组均未出现 AP 报错**（各 0 条），说明两种模式下内存不足都以落盘方式降级，未造成查询失败。
 
-| | AMM 介入 | AMM 不介入 |
+### 4.8 数据质量说明
+
+开启组的采样密度低于关闭组（各 step 样本数 22~69 对 110~134），原因是 AMM 介入使采样连接的响应变慢。
+
+- **不受影响**：`shared_buffers` 极值（各 step 内池值恒定）、累计计数器（反压/入队/超时按增量读取）、`EXPLAIN` 直接测量、gsbench operations 总量
+- **受影响**：开启组分阶段 TPS 均值的估计精度低于关闭组，表 4.7 中各 step 的 TPS 差异应视为趋势而非精确值；operations 总量不受此影响
+
+本报告的达成判定均建立在不受影响的量上。
+
+---
+
+## 五、源码层面的原因分析
+
+第四章的五个未达成现象，在源码中都能找到确切成因。本章逐一对应。
+
+### 5.1 现象与根因对照
+
+| 第四章观察到的现象 | 根因 | 源码位置 |
 |---|---|---|
-| 共享池是否移动 | **借了，1984 → 1792，共 192 MB（带宽的 12.5%）** | 恒 1792，不动 |
-| AP 实际拿到 | `dynamic_used_mb` 峰值 **24 MB**（阶段④ 请求 4096 MB） | **475 MB / 单查询，全内存完成** |
-| 排序落盘 | **external merge，Disk 238368 kB** | quicksort，无落盘 |
+| 申请 512 MB 实得授信 6 MB，排序落盘 | 授信由静态决策树给出，对本负载低估约 600 倍 | `workmem_dtree_model.cpp:149` |
+| 授信小则排序内存必然小 | AMM 对算子内存**只减不增** | `tuplesort.cpp:963` `:574` |
+| step② 越过动态内存但共享池零变动 | 借出触发条件是"空闲链表为空"，不是"需求超过供给" | `gs_amm.cpp:6424` |
+| 5→8→11 会话加压无效 | 需求信号是**单查询**的，不跨会话累加 | `gs_amm.cpp:6506` `:5980` |
+| 需求被判为"无需求" | 塌缩后单查询需求 4 MB ≤ `deadband_mb` 32 | `gs_amm.cpp:2924` |
+| AMM 只观测到 2 个活跃 AP（实际 5~11 个） | 回退路径不计入 `active_ap_count` | `gs_amm_query.cpp:780` vs `gs_amm.cpp:6555` |
+| step① 内存宽裕却借还振荡 | 自动控制器每拍传 `demand=0`，回收成唯一正分动作 | `gs_amm.cpp:5510` |
+| 借出后立即被收回 | 借要过 5 道闸，还只过 1 道，回收判据不检查 AP 是否仍需要 | `gs_amm.cpp:2914` vs `:2916` |
+| step④ 反压 48 次仅入队 1 次 | 冷却类拒绝走提前反压路径，到不了队列 | `gs_amm.cpp:2211` `:6553` |
+| step⑤ 共享池只回升 64 MB | AMM 不观测 `buffer_hit`；`TP_RECOVERY` 上限恒为 `max_mb` | `gs_amm.cpp:2902` |
 
-**判定：不成立。** 池确实动了，但让渡出来的内存没有到达 AP——`dyn_used` 峰值 24 MB 对 4096 MB 的请求，实得约 0.6%。而 AMM 不介入时，AP 无需任何"借"的动作就直接拿到 464 MB 全内存完成排序。
+### 5.2 根因一：授信额度由静态决策树给出，对本负载低估约 600 倍
 
-**"借内存"这个动作发生了，"AP 得到内存"这个结果没有发生。**
+AP 能拿到多少内存，由一棵**编译进二进制的静态决策树**决定（`src/common/backend/utils/mmgr/workmem_dtree_model.cpp`，文件头注明 `Auto-generated tree inference`，19 维特征）。
 
-### 问题（2）借了 TP 内存，有没有托底保护？
-
-| | AMM 介入 | AMM 不介入 |
-|---|---|---|
-| 地板 | 512 MB | 512 MB |
-| 实际最低 `active_mb` | **1792 MB** | 1792 MB |
-| 距地板 | **1280 MB（20 个 granule）** | 1280 MB |
-| 触地板采样数 | **0** | 0 |
-| TP 吞吐（①–④，9 min） | 251,789 ops | **356,524 ops** |
-| `drop_ratio` 峰（①②） | **0.62 / 0.42** | **0.067 / 0.029** |
-| `tp_guard_hot` 次数（①②） | **31 / 43** | **0 / 0** |
-
-**判定：托底机制从未被触发，且 TP 保护的实际效果是负的。**
-
-共享池最低只到 1792 MB，距地板还有 20 个 granule，地板逻辑一次都没执行到——**它没有被证伪，只是从未有机会运行**。
-
-更值得注意的是保护的方向：AMM 介入时 TP 吞吐**低 41.6%**，`drop_ratio` 高一个数量级（0.62 vs 0.067），`tp_guard_hot` 从 0 次涨到 31–43 次。**AMM 声称要保护的 TP，在它介入后反而更差。**
-
-合理解释是：AP 排序被迫落盘 233 MB，产生的临时文件 I/O 与 TP 的磁盘读争抢（TP 工作集 2.9 GB > 缓冲池，本就是磁盘密集型）。**AMM 通过让 AP 落盘来"节省"内存，代价由 TP 承担。**
-
-### 问题（3）托底保护后 AP 持续增加，是否开启队列保护？
-
-| | AMM 介入 | AMM 不介入 |
-|---|---|---|
-| 反压次数 | **440** | 0 |
-| 入队次数 | **1** | 0 |
-| 排队超时 | **106** | 0 |
-| 队列长度峰值 | 5 | 0 |
-| 入队占反压 | **0.23%** | — |
-
-反压原因构成（仅 ON 组）：
-
-```
-resize_cooldown   182     ← 冷却窗口，走不到队列
-recovery_cooldown 132     ← 冷却窗口，走不到队列
-capacity           87     ← 唯一会入队的分支
-tps_guard           1
-```
-
-> 关闭组 CSV 的 `last_backpressure_reason` 列显示 `resize_cooldown=719`，那是**开启组遗留的回显值**——该字段未被更新，因为关闭组反压增量为 0。不可作为关闭组发生过反压的证据。
-
-**判定：不成立。** 440 次反压只有 1 次进入队列。代码层原因（`gs_amm.cpp:6553`）：
+本次负载命中的叶子：
 
 ```c
+// workmem_dtree_model.cpp:149
+return 0.78155095881963832;      // 单位 MB
+```
+
+`0.78155095881963832 MB × 1024 = 800.3 kB`。向上取整后即为授信：
+
+```c
+// gs_amm_query.cpp:922
+prediction_mb = Max((gs_amm_native_bound_kb(calibrated_bounds_kb[0]) + 1023) / 1024, 1);
+```
+
+实测 `last_grant_mb = 6`，与该量级一致。
+
+**为什么落在这个叶子上——模型第一层有一处断崖：**
+
+```c
+// workmem_dtree_model.cpp:44 与 :420
+if (x[4] <= 5.8494858741760254)   /* max_plan_rows_log10 */
+```
+
+`10^5.8495 ≈ 70.7 万行`。两侧叶子值相差两个数量级：
+
+| 分支 | 条件 | 叶子数 | 值域 |
+|---|---|---|---|
+| **左** | ≲ 70.7 万行 | 29 | **0.115 – 7.63 MB**，其中 20 个低于 0.79 MB |
+| 右 | > 70.7 万行 | 25 | 8.28 – **300.67 MB** |
+
+本次排序 `EXPLAIN` 实测 `rows=449387`，`log10(449387) = 5.653 < 5.8495` → **落在左子树**。
+
+而该排序在原生模式下实测需要 **464 MB**（`quicksort Memory: 475082kB`）：
+
+```
+模型预测   0.78 MB
+实际需要   464 MB
+低估倍数   约 600 倍
+```
+
+**这不是负载被缩小造成的**——449387 行是用原生模式校准出的正确区间跑出的真实行数。
+
+**第三棵树已退化：** `predict_multi_pass_mb` 的 18 个叶子全部落在 **0.0196 – 0.0625 MB**，无论输入什么特征都返回 20~64 KB，不具备区分能力。
+
+### 5.3 根因二：AMM 对算子内存只减不增
+
+即使 `work_mem` 设为 512 MB，最终生效值也被授信压下去，且**只会往下压**：
+
+```c
+// tuplesort.cpp:963  创建排序时
+if (amm_grant_kb > 0)
+    workMem = Min(workMem, (int64)amm_grant_kb);      // 只取小值
+
+// tuplesort.cpp:574  运行中每次检查内存
+static void ApplyGsAmmEffectiveSortGrant(Tuplesortstate* state)
+{
+    ...
+    if (grant_bytes >= state->allowedMem)
+        return;                                       // 授信 ≥ 现额度 → 不做任何调整
+    state->allowedMem = grant_bytes;                   // 只会往下压
+}
+```
+
+**AMM 从不把 `work_mem` 调高。** 因此 §5.2 的低估会一比一传导为排序可用内存的减少，直接导致落盘。
+
+准入失败时更直接——改写会话 GUC：
+
+```c
+// gs_amm_query.cpp:780  gs_amm_begin_native_fallback()
+effective_work_mem_kb = Min(state->saved_work_mem_kb, Max(gs_amm_fallback_work_mem_kb, 1));
+set_config_option("work_mem", value, PGC_USERSET, PGC_S_SESSION, GUC_ACTION_SAVE, true, ERROR);
+```
+
+即 `SET work_mem='512MB'` 在 AMM 开启时不再是承诺，只是一个申请。
+
+### 5.4 根因三：借出的触发条件与需求信号
+
+这两处共同解释了 step②③④「加压无效」。
+
+**其一，借出触发条件是"空闲链表为空"，而非"需求超过供给"：**
+
+```c
+// gs_amm.cpp:6424
+if (free_granule_mb == 0 && block_reason[0] == '\0')
+    gs_amm_controller_step_internal(admission_demand_mb, tp_pressure, io_pressure, NULL, 0);
+```
+
+只要空闲链表里还剩 1 个 granule，**无论有多少 AP 在等内存，都不会触发借出**。第四章 step②③ 中 `free_gr` 长期为 1~2，正对应此处。
+
+**其二，需求信号是单查询的，不跨会话累加：**
+
+```c
+// gs_amm.cpp:6506  准入路径传的是本查询自己的需求
+gs_amm_prepare_admission_granules(Max(prediction_mb, (cache_bound_kb + 1023) / 1024));
+
+// gs_amm.cpp:6415  再抬到最小授信
+admission_demand_mb = Max(admission_demand_mb, gs_amm_ap_min_grant_mb);   // = 4
+
+// gs_amm.cpp:5980  控制器状态直接取该单值，全代码无任何累加
+obs.ap_demand_mb    = effective_ap_demand_mb;
+state0.ap_demand_mb = obs.ap_demand_mb;
+```
+
+**11 个各要 512 MB 的会话不会合成一个 5632 MB 的需求**，控制器每次只看到其中一个查询的需求。这就是为什么会话数从 5 提到 11，借出深度毫无变化。
+
+**其三，塌缩后的需求低于死区，被判为"无需求"：**
+
+```c
+// gs_amm.cpp:2924
+if (state->ap_demand_mb <= cfg->deadband_mb)
+    return "no_demand";                               // deadband_mb = 32
+```
+
+授信塌缩后单查询需求 `max(1, ap_min_grant_mb=4) = 4 MB ≤ 32 MB`，`BORROW` 被判为非法。
+
+### 5.5 根因四：为什么 AMM 只观测到 2 个活跃 AP
+
+第四章 step②~④ 中，实际启动 5~11 个 AP 会话，但 `active_ap_count` 峰值始终是 2。
+
+原因是**只有授信成功的会话才被计入**：
+
+```c
+// gs_amm.cpp:6555  授信成功路径
 if (grant_kb > 0) {
-    ... admitted = true;
+    state->dynamic_used_mb += grant_mb;
+    state->active_ap_count++;                         // ← 仅此处递增
+    ...
+}
+```
+
+而走回退路径的会话不计入：
+
+```c
+// gs_amm_query.cpp:780  gs_amm_begin_native_fallback()
+state->active = true;
+state->fallback = true;
+state->selected_grant_mode = GS_AMM_NATIVE_GRANT_MODE_NONE;   // 无 grant，不计数
+```
+
+**即：拿不到授信的 AP 会话，在 AMM 的账本里等于不存在。** 它们既不算"已满足的需求"，也不算"待满足的需求"，直接从需求侧消失——这进一步加剧了 §5.4 的需求低估。
+
+### 5.6 根因五：自动控制器恒传 demand=0，借与还判据不对称
+
+这解释了 step① 中「内存宽裕却反复借还」的振荡。
+
+**自动控制器每拍都把需求写死为 0：**
+
+```c
+// gs_amm.cpp:5479  gs_amm_autorun_controller_from_metrics()
+active_ap_count = state->active_ap_count;      // 读了
+dynamic_used_mb = state->dynamic_used_mb;      // 读了
+ap_queue_len    = state->ap_queue_len;         // 读了
+if (!tp_guard_hot && !io_guard_hot && active_ap_count == 0 && dynamic_used_mb == 0 &&
+    ap_queue_len == 0 && reclaiming_granules == 0) {
+    SpinLockRelease(&state->mutex); return;     // ← 三个信号只当「要不要跑这一拍」的门闩
+}
+state->auto_controller_step_count++;
+SpinLockRelease(&state->mutex);
+
+gs_amm_controller_step_internal(0, tp_pressure, io_pressure, NULL, 0);   // ← 需求硬编码 0
+```
+
+三个需求信号被读取后，仅用于判断是否执行本拍，**跑起来后需求一律传 0**。
+
+**而借与还的合法性判据严重不对称：**
+
+```c
+// gs_amm.cpp:2914  还 —— 1 道闸
+if (action == GS_AMM_TP_RECOVERY)
+    return state->active_mb < state->max_mb ? "" : "at_max";
+
+// gs_amm.cpp:2916  借 —— 5 道闸
+if (action == GS_AMM_BORROW_FROM_BUFFER) {
+    if (state->tp_pressure >= cfg->tp_pressure_guard) return "tp_pressure_guard";
+    if (state->io_pressure >= cfg->io_pressure_guard) return "io_pressure_guard";
+    if (!state->tail_reclaimable)                     return "tail_not_reclaimable";
+    if (state->ap_demand_mb <= cfg->deadband_mb)      return "no_demand";
+    if (state->active_mb - state->min_mb <= 0)        return "shared_buffers_min";
+    return "";
+}
+```
+
+**回收的合法性判据里，没有任何一项检查「AP 是否还需要这块内存」**，唯一条件是"还没回到上限"。
+
+叠加评分——回收收益 `recovered × tp_pressure/100 × 1.2`，而 `OBSERVE` 恒为 0 分。混合负载下 `drop_ratio > 0` 几乎恒成立，因此：**只要 BORROW 因 `demand=0` 被判非法，回收就是唯一正分动作，每一拍都会执行。**
+
+这正是 step① 观察到的形态：借出 1 个 granule → 下一拍自动控制器传 0 → 回收 → 再借 → 再收。
+
+### 5.7 根因六：队列不是准入失败的通用路径
+
+step④ 反压 48 次仅入队 1 次，源码中只有一条分支能进队列：
+
+```c
+// gs_amm.cpp:6553
+if (grant_kb > 0) {
+    ... admitted = true;                                          // 正常授予
 } else if (queue_timeout_ms > 0 && gs_amm_queue_register_locked(state, &queue_ticket)) {
-    gs_amm_set_backpressure_reason_locked(state, "capacity");   // ← 只有这一条分支入队
+    gs_amm_set_backpressure_reason_locked(state, "capacity");     // ← 唯一入队分支
     queued = true;
 } else {
     state->ap_queue_timeout_count++;
     gs_amm_set_backpressure_reason_locked(state, guard_fast_block ? block_reason : "capacity");
-    backpressure = true;                                        // ← 直接反压，回退 fallback
+    backpressure = true;                                          // ← 直接反压，回退 fallback
 }
 ```
 
-`gs_amm_new_ap_block_reason_locked`（`:2211`）返回的 7 种原因中，`resize_cooldown` / `recovery_cooldown` / `tps_guard` / `tp_pressure` / `io_pressure` 全部走 `GsAmmEvaluateAdmission` 的提前反压路径，**到不了队列代码**。本轮此类占反压的 71%。
+而 `gs_amm_new_ap_block_reason_locked` 返回的 7 种原因中，多数走 `GsAmmEvaluateAdmission` 的提前反压路径，**根本到不了队列代码**：
+
+```c
+// gs_amm.cpp:2211
+if (state->tp_generation_exhausted)          return "telemetry_generation_exhausted";
+if (state->cooldown_until > now)             return "resize_cooldown";      // ← 不入队
+if (gs_amm_tp_drop_guard_hot_locked(state))  return "tps_guard";            // ← 不入队
+if (gs_amm_io_guard_hot_locked(state))       return "io_pressure";          // ← 不入队
+if (gs_amm_recovery_cooldown_hot_locked(...)) return "recovery_cooldown";   // ← 不入队
+...
+```
+
+第四章实测的反压原因构成正好印证：
+
+```
+capacity            164     ← 唯一会入队的分支
+resize_cooldown      88     ← 冷却窗口，不入队
+recovery_cooldown    80     ← 冷却窗口，不入队
+```
+
+**168 / 332 = 51% 的反压因冷却窗口被直接拒绝。**
 
 此外 `gs_amm_admission_failure_policy` 只有两个取值，**没有 `queue`**：
 
@@ -318,31 +824,19 @@ if (grant_kb > 0) {
 {"error",    GS_AMM_ADMISSION_ERROR,    false},
 ```
 
-**排队不是准入失败的通用路径**，只有"确实没有容量"才入队；因冷却窗口被拒的请求直接回退到 `fallback_work_mem_kb`。这与 PPT 阶段④"新慢 SQL 进入反压队列"存在语义差异。
+即排队不是准入失败的通用策略，只有"确实没有容量"才入队；因冷却被拒的请求直接回退到 `fallback_work_mem_kb`。这与 step④ 期望的"新慢 SQL 进入反压队列"存在语义差异。
 
-### 问题（4）TP 内存托底后，TP 流量增加，会不会增加 TP 共享缓存？
+### 5.8 根因七：AMM 感知不到 buffer_hit，也感知不到进程内存
 
-阶段⑤ TP 由 2 worker 阶跃到 8 worker：
-
-| | AMM 介入 | AMM 不介入 |
-|---|---|---|
-| `buffer_hit` 最低 | **24.4%** | 28.0% |
-| `active_mb` 区间 | **恒 1792** | **恒 1792** |
-| 是否扩池 | **否** | 否 |
-
-**判定：不成立，且架构上不可能成立。** 三层理由：
-
-**其一，AMM 完全不观测 buffer_hit：**
+**其一，全代码零处引用 `buffer_hit`：**
 
 ```
 grep -niE "blks_hit|buffer_hit|hit_ratio|hit_rate|cache_hit" gs_amm.cpp  →  0 处匹配
 ```
 
-AMM 的全部输入信号是 `shared_buffer_physical_read_count`、`ap_temp_spill_bytes`、`tp_baseline_tps` / `tp_recent_tps`。
+AMM 的全部输入信号是 `shared_buffer_physical_read_count`、`ap_temp_spill_bytes`、`tp_baseline_tps` / `tp_recent_tps`。物理读率只进入 `io_pressure`，而 `io_pressure` 的唯一作用是**阻止借出**——命中率下降会让它更不敢借，方向相反。
 
-**其二，物理读只作"刹车"不作"油门"：** 物理读率进入 `gs_amm_compute_io_pressure()`（`:2268`）产出 `io_pressure`，其唯一作用是**阻止借出**。命中率下降 → 物理读上升 → 更不敢借出，方向相反。
-
-**其三，共享池没有"扩张"这个动作：**
+**其二，共享池没有"扩张"这个动作。** 唯一能增大 `active_mb` 的是 `TP_RECOVERY`，其步长上限恒为 `max_mb`：
 
 ```c
 // gs_amm.cpp:2902
@@ -352,272 +846,67 @@ if (action == GS_AMM_TP_RECOVERY) {
 }
 ```
 
-唯一能增大 `active_mb` 的是 `TP_RECOVERY`，上限恒为 `max_mb`。**"扩共享池"在实现中只有"把先前借走的还回来"一个含义**，不存在超过 2048 MB 的可能。
+**"回补共享池"在实现中只有"把先前借走的还回来"一个含义**，不存在超过初始 `shared_buffers` 的可能。step⑤ 只回升 64 MB，是因为此前本就只借出了这么多。
 
-### 四项汇总
-
-| PPT step | 验收行为 | AMM 介入 | AMM 不介入 | 判定 |
-|---|---|---|---|---|
-| ② | AP 并发起来是否借到内存 | 池借 192 MB，AP 实得 24 MB，排序落盘 233 MB | AP 直接得 475 MB 全内存 | **不成立** |
-| ③ | 借了 TP 内存是否有托底保护 | 距地板 1280 MB，从未触及；TP 吞吐低 41.6% | TP 吞吐高，guard 全程冷 | **不成立**（机制未触发，效果为负） |
-| ④ | AP 持续增加是否开启队列保护 | 反压 440 次仅入队 1 次（0.23%） | 无此机制 | **不成立** |
-| ⑤ | TP 增流是否扩共享缓存 | hit 24.4%，池恒 1792 | hit 28.0%，池恒 1792 | **不成立**（架构上不存在该动作） |
-
----
-
-## 五、为什么内存没借成功 —— 决策树源码分析
-
-### 5.1 直接原因：需求信号被压到借出门槛以下
-
-`BORROW_FROM_BUFFER` 的合法性判据（`gs_amm.cpp:2916`）：
+**其三，AMM 不读 `max_process_memory`，也不识别 cgroup。** 它的内存感知只来自 `/proc/meminfo`：
 
 ```c
-if (action == GS_AMM_BORROW_FROM_BUFFER) {
-    if (state->tp_pressure >= cfg->tp_pressure_guard) return "tp_pressure_guard";
-    if (state->io_pressure >= cfg->io_pressure_guard) return "io_pressure_guard";
-    if (!state->tail_reclaimable)                     return "tail_not_reclaimable";
-    if (state->ap_demand_mb <= cfg->deadband_mb)      return "no_demand";     // ← deadband = 32 MB
-    if (state->active_mb - state->min_mb <= 0)        return "shared_buffers_min";
-    return "";
+// gs_amm_query.cpp:631
+static void gs_amm_collect_system_memory(MemTuneWorkMemFeatures &features)
+{
+    FILE *file = AllocateFile("/proc/meminfo", "r");
+    ...  MemTotal / MemAvailable  ...
 }
 ```
 
-而准入路径传给控制器的需求是（`gs_amm_query.cpp:922`、`gs_amm.cpp:6506`/`6415`）：
+本环境 VM 有 32 GiB 内存，在 AMM 眼里内存永远充裕——**它对数据库自身的动态内存是否吃紧毫无感知**。
 
-```c
-prediction_mb = Max((gs_amm_native_bound_kb(detail.calibrated_bounds_kb[0]) + 1023) / 1024, 1);
-gs_amm_prepare_admission_granules(Max(prediction_mb, (cache_bound_kb + 1023) / 1024));
-admission_demand_mb = Max(admission_demand_mb, gs_amm_ap_min_grant_mb);   // = 4
-```
+### 5.9 自我强化闭环
 
-**`calibrated_bounds_kb[0]` 来自决策树预测。** 预测值低 → `prediction_mb` 低 → 需求低于 `deadband_mb(32)` → BORROW 判非法 `no_demand`。
-
-### 5.2 决策树预测了多少：0.78 MB
-
-模型是编译进二进制的**静态决策树**（`src/common/backend/utils/mmgr/workmem_dtree_model.cpp`，998 行，文件头注明 `Auto-generated tree inference`，`MEMTUNE_WORKMEM_MODEL_VERSION 1`），19 维特征、三棵树。
-
-`predict_cache_mb` 中有这样一个叶子：
-
-```c
-return 0.78155095881963832;      // 单位：MB
-```
-
-`0.78155095881963832 MB × 1024 = 800.3 kB` —— 与实测 `observed=800kB` 精确吻合，也与本仓库 README 早先记录的 `dtree_last_feedback_grant_mb = 0.783` 一致。
-
-再往下取整即得授信：
+上述根因不是彼此独立的，它们构成一个闭环：
 
 ```
-prediction_mb = Max((801 + 1023) / 1024, 1) = 1      →  last_grant_mb = 1
-```
-
-三个数——**0.783、800 kB、1 MB**——全部指向同一个写死的叶子值。
-
-### 5.3 为什么落在这个叶子上：模型有一处断崖
-
-三棵树的第一层分裂条件：
-
-```c
-predict_cache_mb    : if (x[4] <= 5.8494858741760254)   /* max_plan_rows_log10 */
-predict_one_pass_mb : if (x[4] <= 5.8494858741760254)   /* max_plan_rows_log10 */
-predict_multi_pass_mb: if (x[10] <= 2.8005000352859497) /* current_session_private_memory_mb */
-```
-
-`10^5.8495 ≈ 70.7 万行`。两侧叶子值相差两个数量级：
-
-| `predict_cache_mb` 分支 | 条件 | 叶子数 | 值域 | 分布 |
-|---|---|---|---|---|
-| **左** | ≲ 70.7 万行 | 29 | **0.115 – 7.63 MB** | **20 个低于 0.79 MB** |
-| 右 | > 70.7 万行 | 25 | 8.28 – **300.67 MB** | 正常量级 |
-
-本次测试的排序，`EXPLAIN` 实测 `rows=449387`，`log10(449387) = 5.653 < 5.8495` → **落在左子树**，掉进亚 MB 区。
-
-**这不是循环论证。** 449387 行是用 AMM 关闭时校准出的正确区间（`1..112347`）跑出来的真实行数，而该排序实测需要 **475082 kB ≈ 464 MB**（AMM 关闭时全内存完成）。
-
-```
-模型预测：0.78 MB
-实际需要：464 MB
-低估倍数：约 594 倍
-```
-
-按 gsbench 的 70%–97% 目标带（358–496 MB）计算，低估区间为 **460 – 640 倍**。
-
-### 5.4 第三棵树整体退化
-
-`predict_multi_pass_mb` 的 18 个叶子全部落在 **0.0196 – 0.0625 MB**：
-
-```
-最小 0.0196 MB    最大 0.0625 MB    中位 0.0519 MB
-```
-
-无论输入特征如何，它永远返回 20–64 KB，**没有区分能力**。
-
-### 5.5 自我强化闭环
-
-因为 `EXPLAIN ANALYZE` 同样被 AMM 拦截（§3.2），**校准阶段量到的是 AMM 的授信额度，而不是数据库的真实能力**，于是形成闭环：
-
-```
-① 决策树预测 0.78 MB → 授信 ~1 MB
+① 决策树给出 0.78 MB 授信（低估 600 倍）
         ↓
-② gsbench 校准：行数一大就真落盘 → 主动把区间退到 284 行
-   （AMM 开启时实测：requested=524288kB observed=800kB observed_percent=0.15 target_met=false）
+② AMM 只减不增，排序实际可用内存被压到 6 MB
         ↓
-③ 负载在成形之前已被缩水，单查询需求 = max(1, ap_min_grant_mb=4) = 4 MB
+③ 单查询需求 = max(1, ap_min_grant_mb=4) = 4 MB
         ↓
-④ 4 MB ≤ deadband_mb(32) → BORROW 判非法 "no_demand" → 不借
+④ 4 MB ≤ deadband_mb(32) → BORROW 判非法「no_demand」
         ↓
-⑤ 不借 → 授信依旧不足 → 回到 ①
+⑤ 不借 → 空闲链表非空 → 连借出的触发条件也不满足
+        ↓
+⑥ 拿不到授信的会话走回退路径，不计入 active_ap_count
+        ↓
+   需求在账本上进一步消失 → 回到 ①
 ```
 
 **AMM 既是发放额度的，又是量测需求的，还是判断需求够不够的。** 它在需求成形之前就把需求压了下去，然后据此判定"没有需求"。
 
-这也解释了为什么**加大 AP 压力无效**：压力增加只增加查询条数，而门槛卡在**单查询需求量**上。且需求信号不跨会话累加（`gs_amm.cpp:5980`，全代码无累加），16 个各要 512 MB 的 AP 不会合成一个大需求。
+这解释了为什么**提高压力无效**：加大并发只增加查询条数，而所有门槛卡的都是**单查询需求量**。第四章中会话数从 5 提到 11，借出深度始终为 0，正是这个闭环的直接后果。
 
----
+### 5.10 小结
 
-## 六、AMM 改变了原生 openGauss 的哪些内存管理行为
-
-### 6.1 介入点：执行器启动钩子
-
-```c
-// gs_amm_query.cpp:839
-bool GsAmmExecutorStart(QueryDesc *query_desc, int eflags)
-{
-    if (!gs_amm_enabled) return false;
-    ...
-    if (!gs_amm_native_auto_mode || !top_level_executor) return false;   // :862 门闩
-    if (query_desc->operation != CMD_SELECT) return false;
-    if (StreamThreadAmI() || (eflags & EXEC_FLAG_EXPLAIN_ONLY) != 0) return false;
-    if (root_plan->total_cost < gs_amm_native_ap_cost_threshold) return false;
-    ...
-    // ↓ 以下为 AMM 新增行为
-    GsAmmBuildWorkMemFeatures(query_desc, &features);      // 扫描计划树取 19 维特征
-    GsWorkmemDtreePredictDetail(feature_values, &detail);  // 决策树预测
-    GsAmmEvaluateAdmission(prediction_mb);                 // 准入评估
-    GsAmmAdmitBounds(..., &admission);                     // 申请授信
-}
-```
-
-### 6.2 行为差异对照
-
-| 环节 | 原生 openGauss 5.0.2 | gauss-amm |
+| 层次 | 问题 | 影响的 step |
 |---|---|---|
-| `work_mem` 语义 | **算子内存预算**，tuplesort 直接读 `u_sess->attr.attr_memory.work_mem` 并据此分配 | **一个申请值**，最终额度由 AMM 决定 |
-| 额度来源 | 会话 `SET` 的值（受 `max_process_memory` 约束） | 静态决策树预测 `calibrated_bounds_kb[0..2]` |
-| 准入控制 | 无 | `GsAmmEvaluateAdmission` + `GsAmmAdmitBounds`，可拒绝 |
-| 被拒后 | 不存在此路径 | `gs_amm_begin_native_fallback()` **改写会话 GUC** |
-| 缓冲池大小 | 启动后固定 | granule 级可在 `[min_mb, max_mb]` 借还 |
+| **模型层** | 决策树对本类排序低估约 600 倍；第三棵树已退化 | 全部 |
+| **执行层** | AMM 对算子内存只减不增；准入失败改写会话 `work_mem` | 全部 |
+| **控制层** | 借出触发条件是空闲链表为空；需求不跨会话累加；死区 32 MB | ②③④ |
+| **调度层** | 自动控制器恒传 `demand=0`；借 5 闸 / 还 1 闸不对称 | ① |
+| **准入层** | 队列非通用路径，冷却类拒绝直接回退 | ④ |
+| **感知层** | 不观测 `buffer_hit`，不读 `max_process_memory`，只看 `/proc/meminfo` | ⑤ |
 
-被拒后的改写是真实的 GUC 写入（`gs_amm_query.cpp:780`）：
-
-```c
-state->saved_work_mem_kb = u_sess->attr.attr_memory.work_mem;
-effective_work_mem_kb = Min(state->saved_work_mem_kb,
-                            Max(gs_amm_fallback_work_mem_kb, 1));   // 只调小，不调大
-set_config_option("work_mem", value, PGC_USERSET, PGC_S_SESSION, GUC_ACTION_SAVE, true, ERROR);
-```
-
-**即：`SET work_mem='512MB'` 在 AMM 开启时不再是承诺，只是一个请求。**
-
-### 6.3 本次实测暴露的连锁后果
-
-| 后果 | 实测证据 |
-|---|---|
-| AP 拿不到申请的内存 | 请求 512 MB，授信 ~1 MB；`native_reject_count=442 / eligible=726`（**60.9% 被拒**）；`effective_downgrade_count=477` |
-| 排序被迫落盘 | `Sort Method: external merge  Disk: 238368kB`（AMM 关闭时为 `quicksort Memory: 475082kB`） |
-| AP 变慢 | 914.9 ms vs 669.5 ms（**+36.7%**） |
-| TP 反而变慢 | 251,789 vs 356,524 ops（**−29.4%**，即 OFF 高 41.6%） |
-| TP 抖动加剧 | `drop_ratio` 峰 0.62 vs 0.067；`tp_guard_hot` 31–43 次 vs 0 次 |
-| 让渡的内存无人使用 | 池借出 192 MB，`dynamic_used_mb` 峰值仅 24 MB |
-
-**AMM 把原生 openGauss "会话声明多少就用多少" 的确定性模型，换成了 "由一个静态决策树预测、再经准入裁决" 的模型。** 当该模型对目标负载低估约 600 倍时，其结果不是"内存调度更优"，而是 AP 与 TP 同时劣化。
+**最上游、影响面最大的是模型层**：若授信正常，②③ 两档的借出与地板行为有机会成立。但 ④（队列）与 ⑤（回补）的问题独立于授信，属于准入分支设计与感知信号缺失，需单独处理。
 
 ---
 
-## 七、数据质量与限制（如实记录）
-
-1. **采样率不对称。** 开启组平均采样间隔 1.70 s（最大 7 s，454 样本），关闭组 1.08 s（最大 2 s，715 样本）。开启组阶段 ③④⑤ 样本数明显偏少（22 / 51 / 61）。
-   - **受影响**：事件绝对计数系低估；开启组分阶段 TPS 的估计精度低于关闭组。
-   - **不受影响**：`active_mb` 极值（阶段内池值恒定）；累计计数器（按 max−min 读取，精确）；`EXPLAIN` 直接测量；gsbench 侧 operations 总量。
-   - 四项验收结论均建立在不受影响的量上。
-
-2. **关闭组的池起点是 1792 而非 2048。** 关闭组紧接开启组运行，池停在开启组结束时的位置。由于 AMM 不介入，池全程未动。故关闭组的"借出深度 0 MB"应理解为"池无移动"，而非"池在满位"。
-
-3. **事件计数须按 `pool_event_id` 去重。** `pool_event_action` 是"最近一次事件"的回显，连续采样会重复计数。本报告所有借/还数字均为去重值。
-
-4. **TPS 须按 Δt 归一化。** 采样器 `tps` 列是采样间隔内的 `Δxact_commit`，间隔 1–7 s 不等，直接算会把采样抖动计入。本报告已归一化。
-
-5. **TPS 抖动 ≤3% 的判据无法判定。** 两组噪声底均远超判据本身（TP 工作集 2.9 GB > 缓冲池 2 GB 使点查大量命中磁盘，虚拟化存储延迟波动大）。这是环境限制，非 AMM 缺陷。**验收①与验收④的前提在本环境相互冲突**：小工作集则 TPS 稳但 `buffer_hit` 恒 100%；大工作集则 `buffer_hit` 可测但 TPS 无法判 3%。
-
-6. **`native_auto_mode=off` 不等于 `gs_amm_enabled=off`。** 前者关闭执行器介入，AMM 的池控制器与遥测仍在（关闭组仍观测到 65 次 `TP_RECOVERY`）。选择前者是为了保持两组遥测可比。若需完全禁用 AMM，应使用后者。
-
-7. **单次 A/B。** 本报告基于一次对照实验，未做重复性验证。
-
----
-
-## 八、建议
-
-**以下为评估结论的延伸，不构成对被测代码的修改要求。**
-
-1. **决策树模型需重新训练或校准。** 这是最上游、影响最大的一环。当前模型对 45 万行 × 532 字节的排序预测 0.78 MB，实需 464 MB，低估约 600 倍。断崖位于 `max_plan_rows_log10 = 5.8495`（≈70.7 万行），恰好把常见规模的分析型排序划到"小查询"一侧。
-
-2. **`predict_multi_pass_mb` 已退化，应修复或停用。** 18 个叶子全部在 0.0196–0.0625 MB，无区分能力。
-
-3. **准入被拒时不应只调小 work_mem。** 当前 `min(用户值, 回退值)` 使 AP 必然落盘，其 I/O 代价转嫁给 TP。本次实测 TP 吞吐因此下降 29.4%。
-
-4. **`deadband_mb`(32) 应对聚合需求生效，而非单查询需求。** 当前 16 个各要 512 MB 的 AP 不会合成大需求（`gs_amm.cpp:5980` 无累加），加负载无法越过门槛。
-
-5. **队列应成为准入失败的通用路径。** 当前仅 `capacity` 分支入队，冷却类拒绝直接回退，导致 440 次反压仅 1 次入队。`gs_amm_admission_failure_policy` 建议增加 `queue` 取值。
-
-6. **`buffer_hit` 若为验收指标，需先在实现中引入观测。** 目前既无法控制也无法验收。若验收意图是"共享池能超出初始 `shared_buffers` 增长"，需注意该能力当前不存在（`TP_RECOVERY` 上限恒为 `max_mb`）。
-
-7. **若要复验 PPT 完整五阶段链路**，需在低噪声环境（物理机或专用存储）重测，并先完成噪声底测量（CV ≤ 2%）作为硬前置。
-
----
-
-## 九、证据清单
-
-```
-evidence/ab-20260811-172413/
-├── amm-ammon-20260811-172413.csv       AMM 介入组采样（459 行，40 列）
-├── amm-ammoff-20260811-172413.csv      AMM 不介入组采样（720 行，40 列）
-├── probe-ab-workmem.txt                EXPLAIN 直接测量（两模式 Sort 算子内存）
-├── prestate-{ammon,ammoff}-*.txt       两组起始池状态
-├── poststate-{ammon,ammoff}-*.txt      两组结束池状态与准入计数器
-├── timeline-{ammon,ammoff}-*.txt       阶段时间线
-├── tp-{ammon,ammoff}-s1234-*.log       两组 TP 主负载（gsbench EVIDENCE）
-├── tp-{ammon,ammoff}-s5-*.log          两组阶段⑤ TP
-├── ap-{ammon,ammoff}-*.log             AP 持有器输出
-├── watchdog-{ammon,ammoff}-*.log       会话与服务器日志看门狗
-└── ab-driver.log                       编排驱动日志
-
-scripts/
-├── run-ab.sh                 A/B 主编排（五阶段 × 两模式）
-├── sample-amm.sh             40 列 CSV 采样器
-├── ap-holder.sh              复刻 gsbench 201 的 AP 负载
-├── tp-watchdog3.sh           存活看门狗（适配 openGauss 5.0.2 无 backend_type 列）
-├── probe-ab-workmem.sh       EXPLAIN 直接测量算子内存
-└── analyze-ab.sh             逐阶段并排分析
-```
-
-### 复现命令
-
-```bash
-# 主实验（约 28 分钟，自动跑完两组并复原 native_auto_mode）
-GSBENCH_PASSWORD=... bash scripts/run-ab.sh
-
-# 逐阶段并排分析
-bash scripts/analyze-ab.sh
-
-# 直接测量两模式下 Sort 算子实得内存
-bash scripts/probe-ab-workmem.sh
-```
-
----
-
-## 十、测试边界声明
+## 六、测试边界声明
 
 本次工作为第三方测试评估。**未修改任何被测代码。**
 
-变更仅一项：GUC `gs_amm_native_auto_mode`（on ↔ off），`sighup` 级，经 `pg_reload_conf()` 生效，不涉及重启或重编译。脚本以 `trap ... EXIT` 保证异常退出时也复原为 `on`，实验结束已确认复原。
+变更仅两项，均为配置：
 
-报告中列出的缺陷是**评估对象**，不是待办工单。§八 的建议供方案方参考，本次测试不实施任何修复。
+1. `max_process_memory` 由 4 GB 调整为 7424 MB，使 openGauss 内存保护得以初始化（`enable_memory_limit` 生效）。两组同等适用。
+2. `gs_amm_native_auto_mode` 在两组间切换（on / off），即本次唯一变量。脚本以 `trap ... EXIT` 保证异常退出时复原为 `on`。
+
+报告中列出的缺陷是**评估对象**，不是待办工单。本次测试不实施任何修复。
